@@ -42,7 +42,7 @@ class AuthenticationTest extends TestCase
         $this->actingAs($user)
             ->get('/dashboard')
             ->assertOk()
-            ->assertSee('Accesso protetto attivo');
+            ->assertSee('Area di monitoraggio');
     }
 
     public function test_user_cannot_log_in_with_invalid_credentials(): void
@@ -83,6 +83,15 @@ class AuthenticationTest extends TestCase
         ])->assertSessionHasErrors('email');
 
         $this->assertGuest();
+    }
+
+    public function test_authenticated_non_administrator_cannot_access_the_dashboard(): void
+    {
+        $user = User::factory()->create(['is_admin' => false]);
+
+        $this->actingAs($user)
+            ->get('/dashboard')
+            ->assertForbidden();
     }
 
     public function test_login_attempts_are_rate_limited(): void

@@ -35,4 +35,11 @@ return [
         ],
     ],
 
+    'google_analytics' => [
+        'client_id' => env('GOOGLE_ANALYTICS_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_ANALYTICS_CLIENT_SECRET'),
+        'redirect_uri' => env('GOOGLE_ANALYTICS_REDIRECT_URI'),
+        'scope' => 'https://www.googleapis.com/auth/analytics.readonly',
+    ],
+
 ];

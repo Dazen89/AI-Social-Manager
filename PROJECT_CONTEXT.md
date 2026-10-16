@@ -1,50 +1,67 @@
-# AI Social Manager — Public project context
+# Monitoring Hub — Public project context
 
-_Status: initial Laravel installation; features described below are planned unless marked implemented._
+_Status: authentication, the site registry and the Google Analytics OAuth connection flow are implemented. Analytics report retrieval is the next development milestone. Features not marked implemented are planned._
 
 ## Purpose
-AI Social Manager is a reusable web application to help small teams publish social posts with limited manual effort and evaluate results **per post**, in the same interface where the published material is listed.
+Monitoring Hub is a private, reusable dashboard for small teams that need to centralize the services used to monitor websites they own or are explicitly authorized to manage.
 
-The initial implementation targets X, while keeping integrations modular enough to support other social platforms and source websites in the future. Low running cost and operational simplicity are design priorities. AI-assisted copywriting may be introduced later; do not make it a prerequisite.
+The product is site-focused: an administrator registers a website, connects one or more optional monitoring providers, imports or discovers its canonical pages and reviews metrics in a single interface. Google Analytics 4 is the first provider. Social publishing and other services may be added later as independent adapters; they are not prerequisites for the monitoring dashboard.
+
+The dashboard may run on a different subdomain from the monitored website. It must access provider data through official, authorized server-side APIs rather than scraping dashboards or assuming same-origin access.
 
 ## Stack
 - Laravel 13, PHP 8.4 compatible.
 - Local development with SQLite; production with MySQL. Database schema changes must work on both.
-- Laravel-native UI (Blade and, only if useful, Livewire), Laravel Scheduler, database queues if required, HTTP Client for external APIs.
-- Code is developed locally, versioned on GitHub and deployed to a hosted Laravel application; environment-specific settings stay outside Git.
+- Laravel-native UI (Blade and, only if useful, Livewire), Laravel Scheduler, database queues if required, and Laravel HTTP Client for external APIs.
+- Code is developed locally, versioned on GitHub and deployed to a hosted Laravel application; secrets and environment-specific settings stay outside Git.
 
 ## Product scope
-1. **Authentication:** private dashboard; login/logout; no public registration; an initial admin can create additional admin accounts through controlled functionality.
-2. **Content sources:** configurable read-only connectors that can import titles, descriptions, destination URLs and expressly approved promotional assets. Begin with one source connector; do not couple business logic to any particular publisher's schema.
-3. **Editorial workflow:** drafts, review/approval, publication scheduling, duplicate prevention and complete post history. Store text, media references, timestamps, external post ID, destination and publication status.
-4. **Social publishing:** use official APIs; support failures/retries, idempotency, cost limits and a default-disabled publishing mode for development.
-5. **Analytics:** obtain available per-post social metrics at controlled intervals; retain snapshots. Attribute visits using tagged links and a separately configured website analytics provider when permitted.
-6. **Outbound link tracking:** optional transparent redirect service for destinations on allowlisted domains. A redirect click is not equivalent to a website visit or conversion.
-7. **Post-focused dashboard:** show the post content next to impressions (if available), likes, reposts, replies, attributable website visits and outbound clicks. Make unavailable metrics explicit, not zero. Provide filters, reporting by content type and comparisons normalized by impressions where available.
+1. **Authentication — implemented:** private dashboard, login/logout, no public registration, initial administrator provisioning through an environment-backed seeder.
+2. **Site registry — implemented:** administrators first register owned sites using a canonical base URL and manage whether monitoring is active.
+3. **Service selection — implemented foundation:** after creating a site, administrators manage it from a dedicated page and review the optional services available for connection. Provider-specific fields do not belong in the initial site form.
+4. **Google Analytics connection — implemented:** guided installation-level OAuth credential setup, read-only OAuth flow, encrypted credential and token storage, token refresh, account/property discovery, explicit server-verified property selection, matching web-stream discovery, disconnect/revocation and clear connection health. Manual provider identifiers are not the primary setup path.
+5. **Page catalog — planned:** import canonical pages from an approved sitemap or read-only source connector, normalize URLs and prevent duplicates. Analytics rows are metrics, not the canonical source of website pages.
+6. **Measurement — planned:** query Google Analytics Data API at controlled intervals, cache responses, retain useful snapshots and expose unavailable or delayed metrics explicitly.
+7. **Site-focused dashboard — planned:** show traffic and engagement alongside the relevant site and pages, with date filters, comparisons and provider sync status.
+8. **Additional adapters — future:** other analytics, monitoring, content and social services may be introduced behind configurable contracts without coupling the core domain to one provider.
+
+## Domain principles
+- A site is shared within the single private administrative workspace; this project does not introduce multi-tenancy prematurely.
+- The setup experience must be self-explanatory for third-party installations: every provider field should state whether it is required, what it identifies, where to find it and whether it contains a secret. Link to official provider documentation where useful and never assume prior analytics expertise.
+- Provider identities and OAuth connections are separate from the sites and properties they can access, so one authorized connection may serve multiple owned sites.
+- A Google Analytics account can expose multiple GA4 properties and data streams. Reports are queried by property, while host and page dimensions are used to associate metrics with canonical site pages.
+- Store provider identifiers separately from credentials. Installation administrators may save OAuth application credentials through the dashboard; secrets and refresh tokens must be encrypted at rest. Environment variables remain an optional advanced override and take precedence when configured.
+- Prefer on-demand cached reports first, then add scheduled snapshots where trend history, quota control or performance requires them.
 
 ## Safeguards
-- Confirm current API prices, availability and permissions before implementation; never embed tariff assumptions in permanent business logic.
-- Do not generate or publish posts or images from arbitrary source material without configurable eligibility and approval controls.
-- Consider consent, privacy requirements and sensitive page metadata when connecting analytics platforms. Avoid sending personal or sensitive information into logs, URLs or third-party services.
-- Keep real content, domain-specific settings and source database structure outside the public repository.
+- Only register sites that the operator owns or is explicitly authorized to monitor.
+- Request the narrowest provider scopes possible; Google Analytics integration starts read-only.
+- Validate OAuth state, protect callback routes, encrypt tokens, support revocation and never expose credentials or tokens in logs, URLs, views or test fixtures.
+- Treat analytics and page metadata as potentially sensitive. Do not collect unnecessary personal data and do not present unavailable metrics as zero.
+- Respect provider quotas, retry guidance and reporting limitations. Use bounded retries, backoff, caching and controlled background jobs.
+- Keep real domains, account identifiers, credentials, user data, database dumps and installation-specific documentation outside the public repository.
 
 ## Proposed milestones
-**A. Foundation:** inspect repository; implement login/logout, authorization, protected dashboard and controlled admin creation; add feature tests.
+**A. Foundation — implemented:** login/logout, administrator authorization, protected dashboard, initial-admin seeder and feature tests.
 
-**B. Content catalog:** connector contract, source configuration, local fixtures, import/sync and deduplication.
+**B. Site registry and service selection — implemented foundation:** site management UI, URL normalization and a separate area for optional integrations.
 
-**C. Publishing:** drafts, approvals, schedule, social API adapter, fakes, idempotency and spending controls.
+**C. Google Analytics OAuth — implemented:** guided Google Cloud application setup, encrypted installation credentials with an optional environment override, read-only authorization, encrypted token lifecycle, account/property discovery, verified metadata and disconnect flow.
 
-**D. Measurement:** social metric snapshots, UTM attribution adapter and optional allowlisted redirect tracker.
+**D. Page catalog:** sitemap or source connector, canonical URL normalization, sync history and deduplication.
 
-**E. Post performance UI:** published-post list with metrics in context, filters and comparisons.
+**E. Analytics reports:** site and page metrics, cache, quotas, retries and optional snapshots.
 
-**F. Pilot:** limited approved posting and a measurement period before increasing automation.
+**F. Monitoring dashboard:** date ranges, comparisons, sync health and useful site/page views.
+
+**G. Additional services:** introduce new providers only when there is a concrete use case and keep them optional.
 
 ## Development rules
 - Never commit secrets, local data files, dumps or installation-specific documentation.
-- Use safe synthetic fixtures in tests. Request unknown connector schemas rather than guessing.
+- Keep installation and integration screens actionable: use field-level help, safe examples, precise validation messages and an explicit next step when a feature is not yet connected automatically.
+- Use safe synthetic domains and identifiers in tests. Request unknown integration details instead of guessing.
 - Review database migrations for both SQLite and MySQL.
-- Do not change production data or perform social API writes without explicit authorization.
+- No real provider API writes during automated tests or development; use HTTP fakes and explicit production activation gates.
+- Do not change production data or run deployment commands without explicit authorization. Explain migrations and rollback implications.
 
 Installation-specific facts may be documented locally in `PROJECT_PRIVATE.md`; that file is deliberately excluded from Git and is **not** part of the open-source specification.
