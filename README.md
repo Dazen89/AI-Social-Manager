@@ -38,11 +38,13 @@ Su una VPS Linux già configurata, l’intero aggiornamento può essere eseguito
 bash scripts/deploy.sh
 ```
 
+Se il progetto è un normale checkout Git, lo script aggiorna automaticamente il branch tracciato. Se invece i file sono distribuiti da un pannello hosting come Plesk e la cartella pubblicata non contiene `.git`, lo script riconosce il contesto e salta il `git pull`: in questo caso aggiorna prima i file dal pannello Plesk e poi esegui lo stesso comando nella cartella di destinazione.
+
 Lo script:
 
-1. interrompe l’operazione se il checkout contiene modifiche locali o se il branch non ha un upstream;
+1. quando è presente un checkout Git, interrompe l’operazione se contiene modifiche locali o se il branch non ha un upstream;
 2. mette temporaneamente Laravel in modalità manutenzione;
-3. esegue `git pull --ff-only` senza creare merge automatici;
+3. esegue `git pull --ff-only` senza creare merge automatici, oppure lo salta nelle cartelle distribuite da Plesk;
 4. installa le dipendenze PHP di produzione;
 5. applica le migrazioni con `php artisan migrate --force`;
 6. esegue `npm ci` e `npm run build`;
