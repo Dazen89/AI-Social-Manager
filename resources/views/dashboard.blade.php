@@ -13,7 +13,7 @@
                 Registra i siti che vuoi monitorare, quindi scegli per ciascuno i servizi da collegare.
             </p>
 
-            <div class="mt-8 grid gap-4 sm:grid-cols-2">
+            <div class="mt-8 grid gap-4 sm:grid-cols-3">
                 <div class="rounded-2xl border border-slate-800 bg-slate-950/50 p-5">
                     <p class="text-sm text-slate-400">Siti registrati</p>
                     <p class="mt-2 text-3xl font-semibold text-slate-100">{{ $siteCount }}</p>
@@ -22,11 +22,25 @@
                     <p class="text-sm text-slate-400">Google Analytics collegati</p>
                     <p class="mt-2 text-3xl font-semibold text-slate-100">{{ $connectedAnalyticsCount }}</p>
                 </div>
+                <div class="rounded-2xl border border-slate-800 bg-slate-950/50 p-5">
+                    <p class="text-sm text-slate-400">Integrazione AI</p>
+                    @if ($aiIntegration)
+                        <p class="mt-2 text-lg font-semibold text-slate-100">{{ config('ai.providers.'.data_get($aiIntegration, 'provider').'.name') }}</p>
+                        <p class="mt-1 text-xs text-slate-500">{{ config('ai.providers.'.data_get($aiIntegration, 'provider').'.models.'.data_get($aiIntegration, 'model'), data_get($aiIntegration, 'model')) }}</p>
+                    @else
+                        <p class="mt-2 text-lg font-semibold text-amber-300">Da configurare</p>
+                    @endif
+                </div>
             </div>
 
-            <a href="{{ route('sites.index') }}" class="mt-8 inline-flex rounded-xl bg-sky-500 px-5 py-3 font-semibold text-slate-950 no-underline transition hover:bg-sky-400">
-                Gestisci i siti
-            </a>
+            <div class="mt-8 flex flex-wrap gap-3">
+                <a href="{{ route('sites.index') }}" class="inline-flex rounded-xl bg-sky-500 px-5 py-3 font-semibold text-slate-950 no-underline transition hover:bg-sky-400">
+                    Gestisci i siti
+                </a>
+                <a href="{{ route('settings.ai.edit') }}" class="inline-flex rounded-xl border border-violet-400/40 px-5 py-3 font-semibold text-violet-200 no-underline transition hover:bg-violet-400/10">
+                    Configura integrazione AI
+                </a>
+            </div>
         </section>
     </main>
 @endsection

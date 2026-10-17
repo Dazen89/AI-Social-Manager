@@ -19,7 +19,7 @@
                 p { color: #94a3b8; line-height: 1.6; }
                 form { display: grid; gap: 1.25rem; }
                 label { display: block; margin-bottom: .5rem; color: #cbd5e1; font-size: .875rem; }
-                input[type='email'], input[type='password'], input[type='text'], input[type='url'] { width: 100%; padding: .8rem 1rem; border: 1px solid #334155; border-radius: .75rem; background: #020617; color: #f8fafc; }
+                input[type='email'], input[type='password'], input[type='text'], input[type='url'], select { width: 100%; padding: .8rem 1rem; border: 1px solid #334155; border-radius: .75rem; background: #020617; color: #f8fafc; }
                 button { padding: .75rem 1rem; border: 0; border-radius: .75rem; background: #38bdf8; color: #082f49; font-weight: 700; cursor: pointer; }
                 a { color: #38bdf8; }
                 header { padding: 1rem 1.5rem; border-bottom: 1px solid #1e293b; background: #0f172a; }

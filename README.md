@@ -1,6 +1,6 @@
 # Monitoring Hub
 
-Dashboard Laravel privata per registrare siti posseduti o amministrati, collegare servizi di monitoraggio e consultare dati verificati in un’unica interfaccia. Google Analytics 4 è la prima integrazione disponibile.
+Dashboard Laravel privata per registrare siti posseduti o amministrati, collegare servizi di monitoraggio, configurare un fornitore AI e consultare dati verificati in un’unica interfaccia. Google Analytics 4, OpenAI e Anthropic sono le prime integrazioni disponibili.
 
 ## Requisiti
 
@@ -74,6 +74,26 @@ Documentazione ufficiale:
 - [Elenco account e proprietà accessibili](https://developers.google.com/analytics/devguides/config/admin/v1/rest/v1beta/accountSummaries/list)
 - [Report multipli in una richiesta](https://developers.google.com/analytics/devguides/reporting/data/v1/rest/v1beta/properties/batchRunReports)
 
+## Integrazione AI
+
+Dalla dashboard apri **Integrazioni AI**, scegli il fornitore (OpenAI o Anthropic), il modello e inserisci una API key dedicata. La pagina contiene i collegamenti alle console e alle guide ufficiali per creare la chiave e scegliere un modello disponibile per il proprio account.
+
+Il selettore OpenAI propone le famiglie general-purpose attive più utili per la generazione testuale, incluse GPT-6, GPT-5.6, GPT-5.5 e GPT-5.4 Mini (`gpt-5.4-mini`). Modelli specialistici o già deprecati non vengono mostrati.
+
+La configurazione è unica per l’installazione ed è salvata cifrata nella tabella `integration_settings`; la API key non viene mai mostrata dopo il salvataggio. `App\Services\AiService` espone un adapter comune per la generazione di testo e usa:
+
+- OpenAI Responses API (`POST /v1/responses`);
+- Anthropic Messages API (`POST /v1/messages`).
+
+I test usano `Http::fake()` e non effettuano chiamate a consumo. Prima di collegare un flusso applicativo in produzione, configura budget e limiti presso il fornitore e conserva stabilmente `APP_KEY`, necessaria per decifrare le credenziali.
+
+Documentazione ufficiale:
+
+- [Quickstart API OpenAI](https://developers.openai.com/api/docs/quickstart)
+- [Modelli OpenAI](https://developers.openai.com/api/docs/models)
+- [Creare una API key Claude](https://platform.claude.com/docs/en/get-api-key)
+- [Modelli Claude](https://platform.claude.com/docs/en/models/overview)
+
 ## Flusso utente
 
 1. Accedi come amministratore.
@@ -94,7 +114,7 @@ vendor/bin/pint --test
 php artisan view:cache
 ```
 
-I test usano risposte HTTP simulate: non effettuano autorizzazioni reali e non modificano dati Google Analytics.
+I test usano risposte HTTP simulate: non effettuano autorizzazioni reali, non modificano dati Google Analytics e non consumano API AI.
 
 ## Sicurezza
 

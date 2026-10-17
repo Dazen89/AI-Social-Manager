@@ -18,7 +18,8 @@
     input[type='email'],
     input[type='password'],
     input[type='text'],
-    input[type='url'] {
+    input[type='url'],
+    select {
         @apply block w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20;
     }
 }

@@ -19,6 +19,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Hidden(['configuration'])]
 class IntegrationSetting extends Model
 {
+    public const AI = 'ai';
+
     public const GOOGLE_ANALYTICS = 'google_analytics';
 
     protected function casts(): array

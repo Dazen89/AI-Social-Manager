@@ -1,6 +1,6 @@
 # Monitoring Hub — Public project context
 
-_Status: authentication, the site registry, the Google Analytics OAuth connection flow and a first site-level analytics overview are implemented. Features not marked implemented are planned._
+_Status: authentication, the site registry, the Google Analytics OAuth connection flow, a first site-level analytics overview and the installation-level AI provider configuration are implemented. Features not marked implemented are planned._
 
 ## Purpose
 Monitoring Hub is a private, reusable dashboard for small teams that need to centralize the services used to monitor websites they own or are explicitly authorized to manage.
@@ -23,7 +23,8 @@ The dashboard may run on a different subdomain from the monitored website. It mu
 5. **Page catalog — planned:** import canonical pages from an approved sitemap or read-only source connector, normalize URLs and prevent duplicates. Analytics rows are metrics, not the canonical source of website pages.
 6. **Measurement — implemented foundation:** query Google Analytics Data API on demand through one batched request, filter by the registered hostname, cache responses for ten minutes and expose unavailable or delayed metrics explicitly. Scheduled snapshots and historical persistence remain planned.
 7. **Site-focused dashboard — implemented foundation:** each connected site has a 7/28/90-day overview with traffic totals, daily sessions, pages, acquisition channels, devices and countries. Comparisons, richer page drill-down and provider sync history remain planned.
-8. **Additional adapters — future:** other analytics, monitoring, content and social services may be introduced behind configurable contracts without coupling the core domain to one provider.
+8. **AI provider integration — implemented foundation:** administrators can select OpenAI or Anthropic, choose a supported model and save an API key encrypted at rest. A server-side adapter exposes text generation through the provider's official API without exposing credentials to the browser. Product workflows that consume generated content remain planned.
+9. **Additional adapters — future:** other analytics, monitoring, content and social services may be introduced behind configurable contracts without coupling the core domain to one provider.
 
 ## Domain principles
 - A site is shared within the single private administrative workspace; this project does not introduce multi-tenancy prematurely.
@@ -54,7 +55,9 @@ The dashboard may run on a different subdomain from the monitored website. It mu
 
 **F. Monitoring dashboard — implemented foundation:** date ranges and a useful site overview. Comparisons, detailed sync health and page views remain planned.
 
-**G. Additional services:** introduce new providers only when there is a concrete use case and keep them optional.
+**G. AI integration — implemented foundation:** installation-level provider, model and encrypted API-key settings, official setup guidance and a server-side text-generation adapter. Content-generation workflows, approvals and usage controls remain planned.
+
+**H. Additional services:** introduce new providers only when there is a concrete use case and keep them optional.
 
 ## Development rules
 - Never commit secrets, local data files, dumps or installation-specific documentation.

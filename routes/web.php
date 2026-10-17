@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AiIntegrationSettingsController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\GoogleAnalyticsConnectionController;
@@ -29,6 +30,13 @@ Route::middleware('auth')->group(function (): void {
             ->name('settings.google-analytics.update');
         Route::delete('/settings/integrations/google-analytics', [GoogleAnalyticsSettingsController::class, 'destroy'])
             ->name('settings.google-analytics.destroy');
+
+        Route::get('/settings/integrations/ai', [AiIntegrationSettingsController::class, 'edit'])
+            ->name('settings.ai.edit');
+        Route::put('/settings/integrations/ai', [AiIntegrationSettingsController::class, 'update'])
+            ->name('settings.ai.update');
+        Route::delete('/settings/integrations/ai', [AiIntegrationSettingsController::class, 'destroy'])
+            ->name('settings.ai.destroy');
 
         Route::get('/sites/{site}/integrations/google-analytics/connect', [GoogleAnalyticsConnectionController::class, 'connect'])
             ->name('google-analytics.connect');
