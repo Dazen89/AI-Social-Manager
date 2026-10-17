@@ -23,7 +23,7 @@ The dashboard may run on a different subdomain from the monitored website. It mu
 5. **Page catalog — planned:** import canonical pages from an approved sitemap or read-only source connector, normalize URLs and prevent duplicates. Analytics rows are metrics, not the canonical source of website pages.
 6. **Measurement — implemented foundation:** query Google Analytics Data API on demand through one batched request, filter by the registered hostname, cache responses for ten minutes and expose unavailable or delayed metrics explicitly. Scheduled snapshots and historical persistence remain planned.
 7. **Site-focused dashboard — implemented foundation:** each connected site has a 7/28/90-day overview with traffic totals, daily sessions, pages, acquisition channels, devices and countries. Comparisons, richer page drill-down and provider sync history remain planned.
-8. **AI provider integration — implemented foundation:** administrators can select OpenAI or Anthropic, choose a supported model and save an API key encrypted at rest. A server-side adapter exposes text generation through the provider's official API without exposing credentials to the browser. Product workflows that consume generated content remain planned.
+8. **AI provider integration — implemented foundation:** administrators can configure multiple OpenAI or Anthropic connections, choose a supported model, save each API key encrypted at rest and switch the single active integration. A server-side adapter exposes text generation through the active provider's official API without exposing credentials to the browser. Product workflows that consume generated content remain planned.
 9. **Additional adapters — future:** other analytics, monitoring, content and social services may be introduced behind configurable contracts without coupling the core domain to one provider.
 
 ## Domain principles
@@ -55,7 +55,7 @@ The dashboard may run on a different subdomain from the monitored website. It mu
 
 **F. Monitoring dashboard — implemented foundation:** date ranges and a useful site overview. Comparisons, detailed sync health and page views remain planned.
 
-**G. AI integration — implemented foundation:** installation-level provider, model and encrypted API-key settings, official setup guidance and a server-side text-generation adapter. Content-generation workflows, approvals and usage controls remain planned.
+**G. AI integration — implemented foundation:** installation-level provider, model and encrypted API-key settings, multi-connection summary with one active integration, official setup guidance and a server-side text-generation adapter. Content-generation workflows, approvals and usage controls remain planned.
 
 **H. Additional services:** introduce new providers only when there is a concrete use case and keep them optional.
 

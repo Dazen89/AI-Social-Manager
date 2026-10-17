@@ -31,11 +31,21 @@ Route::middleware('auth')->group(function (): void {
         Route::delete('/settings/integrations/google-analytics', [GoogleAnalyticsSettingsController::class, 'destroy'])
             ->name('settings.google-analytics.destroy');
 
-        Route::get('/settings/integrations/ai', [AiIntegrationSettingsController::class, 'edit'])
+        Route::get('/settings/integrations/ai', [AiIntegrationSettingsController::class, 'index'])
+            ->name('settings.ai.index');
+        Route::get('/settings/integrations/ai/create', [AiIntegrationSettingsController::class, 'create'])
+            ->name('settings.ai.create');
+        Route::post('/settings/integrations/ai', [AiIntegrationSettingsController::class, 'store'])
+            ->name('settings.ai.store');
+        Route::get('/settings/integrations/ai/{aiIntegration}/edit', [AiIntegrationSettingsController::class, 'edit'])
             ->name('settings.ai.edit');
-        Route::put('/settings/integrations/ai', [AiIntegrationSettingsController::class, 'update'])
+        Route::put('/settings/integrations/ai/{aiIntegration}', [AiIntegrationSettingsController::class, 'update'])
             ->name('settings.ai.update');
-        Route::delete('/settings/integrations/ai', [AiIntegrationSettingsController::class, 'destroy'])
+        Route::post('/settings/integrations/ai/{aiIntegration}/activate', [AiIntegrationSettingsController::class, 'activate'])
+            ->name('settings.ai.activate');
+        Route::post('/settings/integrations/ai/{aiIntegration}/verify', [AiIntegrationSettingsController::class, 'verify'])
+            ->name('settings.ai.verify');
+        Route::delete('/settings/integrations/ai/{aiIntegration}', [AiIntegrationSettingsController::class, 'destroy'])
             ->name('settings.ai.destroy');
 
         Route::get('/sites/{site}/integrations/google-analytics/connect', [GoogleAnalyticsConnectionController::class, 'connect'])

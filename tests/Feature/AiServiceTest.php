@@ -3,7 +3,7 @@
 namespace Tests\Feature;
 
 use App\Exceptions\AiServiceException;
-use App\Models\IntegrationSetting;
+use App\Models\AiIntegration;
 use App\Services\AiService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -78,15 +78,51 @@ class AiServiceTest extends TestCase
         }
     }
 
+    public function test_openai_connection_check_uses_the_models_endpoint_and_checks_the_selected_model(): void
+    {
+        $this->createSetting('openai', 'gpt-5.4-mini', 'synthetic-openai-key');
+
+        Http::fake([
+            'https://api.openai.com/v1/models' => Http::response([
+                'data' => [
+                    ['id' => 'gpt-5.4-mini'],
+                ],
+            ]),
+        ]);
+
+        app(AiService::class)->testConnection(AiIntegration::query()->sole());
+
+        Http::assertSent(fn (Request $request): bool => $request->method() === 'GET'
+            && $request->url() === 'https://api.openai.com/v1/models'
+            && $request->hasHeader('Authorization', 'Bearer synthetic-openai-key'));
+    }
+
+    public function test_connection_check_rejects_a_model_that_is_not_available_to_the_key(): void
+    {
+        $this->createSetting('openai', 'gpt-5.4-mini', 'synthetic-openai-key');
+
+        Http::fake([
+            'https://api.openai.com/v1/models' => Http::response([
+                'data' => [
+                    ['id' => 'gpt-6-luna'],
+                ],
+            ]),
+        ]);
+
+        $this->expectException(AiServiceException::class);
+        $this->expectExceptionMessage('modello selezionato non è disponibile');
+
+        app(AiService::class)->testConnection(AiIntegration::query()->sole());
+    }
+
     private function createSetting(string $provider, string $model, string $apiKey): void
     {
-        IntegrationSetting::query()->create([
-            'provider' => IntegrationSetting::AI,
-            'configuration' => [
-                'provider' => $provider,
-                'model' => $model,
-                'api_key' => $apiKey,
-            ],
+        AiIntegration::query()->create([
+            'name' => 'Test AI',
+            'provider' => $provider,
+            'model' => $model,
+            'api_key' => $apiKey,
+            'active_marker' => 'active',
             'configured_at' => now(),
             'status' => 'configured',
         ]);

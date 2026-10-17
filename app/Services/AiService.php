@@ -3,8 +3,9 @@
 namespace App\Services;
 
 use App\Exceptions\AiServiceException;
-use App\Models\IntegrationSetting;
+use App\Models\AiIntegration;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 
@@ -15,21 +16,7 @@ class AiService
      */
     public function generateText(string $prompt, int $maxOutputTokens = 1024): string
     {
-        $configuration = IntegrationSetting::query()
-            ->where('provider', IntegrationSetting::AI)
-            ->value('configuration');
-
-        if (! is_array($configuration)) {
-            throw new AiServiceException('L’integrazione AI non è configurata.');
-        }
-
-        $provider = (string) data_get($configuration, 'provider');
-        $model = (string) data_get($configuration, 'model');
-        $apiKey = (string) data_get($configuration, 'api_key');
-
-        if (blank($model) || blank($apiKey)) {
-            throw new AiServiceException('La configurazione AI è incompleta.');
-        }
+        ['provider' => $provider, 'model' => $model, 'apiKey' => $apiKey] = $this->configuration();
 
         $maxOutputTokens = max(1, min($maxOutputTokens, 32768));
 
@@ -38,6 +25,36 @@ class AiService
             'anthropic' => $this->generateWithAnthropic($apiKey, $model, $prompt, $maxOutputTokens),
             default => throw new AiServiceException('Il fornitore AI configurato non è supportato.'),
         };
+    }
+
+    /**
+     * Verify the saved credentials and selected model without generating content.
+     */
+    public function testConnection(AiIntegration $integration): void
+    {
+        ['provider' => $provider, 'model' => $model, 'apiKey' => $apiKey] = $this->configuration($integration);
+        $models = $this->send(
+            $provider,
+            fn () => $this->modelsRequest($provider, $apiKey)
+                ->timeout(30)
+                ->retry(2, 250)
+                ->get((string) config("ai.connections.{$provider}.models_endpoint"))
+                ->throw()
+                ->json(),
+        );
+
+        $availableModels = collect(data_get($models, 'data', []))
+            ->pluck('id')
+            ->filter()
+            ->values();
+
+        if ($availableModels->isEmpty()) {
+            throw new AiServiceException("Il servizio {$provider} non ha restituito modelli verificabili.");
+        }
+
+        if (! $availableModels->contains($model)) {
+            throw new AiServiceException('La API key è stata accettata, ma il modello selezionato non è disponibile per questo account.');
+        }
     }
 
     private function generateWithOpenAi(string $apiKey, string $model, string $prompt, int $maxOutputTokens): string
@@ -95,6 +112,42 @@ class AiService
             ->implode('');
 
         return $this->requireText($text);
+    }
+
+    /**
+     * @return array{provider: string, model: string, apiKey: string}
+     */
+    private function configuration(?AiIntegration $integration = null): array
+    {
+        $integration ??= AiIntegration::query()
+            ->where('active_marker', 'active')
+            ->first();
+
+        if (! $integration) {
+            throw new AiServiceException('L’integrazione AI non è configurata.');
+        }
+
+        $provider = (string) $integration->provider;
+        $model = (string) $integration->model;
+        $apiKey = (string) $integration->api_key;
+
+        if (blank($provider) || blank($model) || blank($apiKey)) {
+            throw new AiServiceException('La configurazione AI è incompleta.');
+        }
+
+        return compact('provider', 'model', 'apiKey');
+    }
+
+    private function modelsRequest(string $provider, string $apiKey): PendingRequest
+    {
+        $request = Http::acceptJson();
+
+        return $provider === 'openai'
+            ? $request->withToken($apiKey)
+            : $request->withHeaders([
+                'x-api-key' => $apiKey,
+                'anthropic-version' => (string) config('ai.connections.anthropic.api_version'),
+            ]);
     }
 
     /**

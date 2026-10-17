@@ -76,14 +76,18 @@ Documentazione ufficiale:
 
 ## Integrazione AI
 
-Dalla dashboard apri **Integrazioni AI**, scegli il fornitore (OpenAI o Anthropic), il modello e inserisci una API key dedicata. La pagina contiene i collegamenti alle console e alle guide ufficiali per creare la chiave e scegliere un modello disponibile per il proprio account.
+Dalla dashboard apri **Integrazioni AI** per vedere i collegamenti già configurati oppure crearne uno nuovo. Per ogni integrazione scegli il fornitore (OpenAI o Anthropic), il modello e inserisci una API key dedicata. La pagina di creazione contiene i collegamenti alle console e alle guide ufficiali per creare la chiave e scegliere un modello disponibile per il proprio account.
+
+Per OpenAI, il codice richiesto all’apertura della console è un codice di verifica del login all’account: non è la API key e non va inserito nel form di Monitoring Hub. Completa il login solo con un account e un metodo di verifica riconosciuti; nella pagina del progetto crea poi una nuova chiave segreta, copiala e incollala nel campo **API key**. La guida usa il percorso diretto della console per le chiavi di progetto.
 
 Il selettore OpenAI propone le famiglie general-purpose attive più utili per la generazione testuale, incluse GPT-6, GPT-5.6, GPT-5.5 e GPT-5.4 Mini (`gpt-5.4-mini`). Modelli specialistici o già deprecati non vengono mostrati.
 
-La configurazione è unica per l’installazione ed è salvata cifrata nella tabella `integration_settings`; la API key non viene mai mostrata dopo il salvataggio. `App\Services\AiService` espone un adapter comune per la generazione di testo e usa:
+Le integrazioni appartengono all’intera installazione e sono salvate nella tabella `ai_integrations`; le API key sono cifrate e non vengono mai mostrate dopo il salvataggio. Una sola integrazione è attiva alla volta: dal riepilogo un amministratore può effettuare lo switch, mentre la prima integrazione creata viene attivata automaticamente. `App\Services\AiService` usa esclusivamente l’integrazione attiva ed espone un adapter comune per la generazione di testo:
 
 - OpenAI Responses API (`POST /v1/responses`);
 - Anthropic Messages API (`POST /v1/messages`).
+
+Dopo il salvataggio, il riepilogo mostra lo stato **Da verificare**. Il pulsante **Verifica** esegue una richiesta di sola lettura a `GET /v1/models`, controlla che il modello scelto sia disponibile per la chiave e mostra **Credenziali verificate** oppure **Verifica non riuscita**. La verifica non genera contenuti.
 
 I test usano `Http::fake()` e non effettuano chiamate a consumo. Prima di collegare un flusso applicativo in produzione, configura budget e limiti presso il fornitore e conserva stabilmente `APP_KEY`, necessaria per decifrare le credenziali.
 

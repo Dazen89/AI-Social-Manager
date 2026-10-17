@@ -22,6 +22,7 @@ class SaveAiIntegrationRequest extends FormRequest
         $models = array_keys(data_get($providers, $provider.'.models', []));
 
         return [
+            'name' => ['nullable', 'string', 'max:100'],
             'ai_provider' => ['required', 'string', Rule::in(array_keys($providers))],
             'model' => ['required', 'string', Rule::in($models)],
             'api_key' => ['nullable', 'string', 'max:4096'],
@@ -34,6 +35,7 @@ class SaveAiIntegrationRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'name.max' => 'Il nome dell’integrazione non può superare 100 caratteri.',
             'ai_provider.required' => 'Seleziona il fornitore AI.',
             'ai_provider.in' => 'Il fornitore AI selezionato non è supportato.',
             'model.required' => 'Seleziona il modello da utilizzare.',
@@ -45,6 +47,9 @@ class SaveAiIntegrationRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $this->merge([
+            'name' => $this->filled('name')
+                ? trim((string) $this->input('name'))
+                : null,
             'ai_provider' => trim((string) $this->input('ai_provider')),
             'model' => trim((string) $this->input('model')),
             'api_key' => $this->filled('api_key')

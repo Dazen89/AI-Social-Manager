@@ -1,14 +1,15 @@
 @extends('layouts.app')
 
-@section('title', 'Integrazioni AI — '.config('app.name', 'Monitoring Hub'))
+@section('title', ($integration ? 'Modifica integrazione AI' : 'Nuova integrazione AI').' — '.config('app.name', 'Monitoring Hub'))
 
 @section('content')
     @include('partials.navigation')
 
     <main class="mx-auto max-w-6xl px-6 py-10">
         <div class="mb-8">
+            <a href="{{ route('settings.ai.index') }}" class="text-sm font-medium text-slate-400 no-underline hover:text-white">← Torna alle integrazioni</a>
             <p class="text-sm font-semibold uppercase tracking-[0.2em] text-violet-300">Impostazioni dell’installazione</p>
-            <h1 class="mt-2 text-3xl font-semibold">Integrazioni AI</h1>
+            <h1 class="mt-2 text-3xl font-semibold">{{ $integration ? 'Modifica integrazione AI' : 'Nuova integrazione AI' }}</h1>
             <p class="mt-3 max-w-3xl leading-7 text-slate-400">
                 Scegli il <strong class="text-slate-200">fornitore</strong> del servizio AI, il modello e la relativa API key. Claude è la famiglia di modelli di Anthropic; OpenAI è sia il fornitore sia il nome della piattaforma API.
             </p>
@@ -33,17 +34,55 @@
             <section class="rounded-3xl border border-slate-800 bg-slate-900 p-8" aria-labelledby="ai-configuration-heading">
                 <div class="flex items-start justify-between gap-4">
                     <div>
-                        <h2 id="ai-configuration-heading" class="text-xl font-semibold">Configurazione attiva</h2>
-                        <p class="mt-2 text-sm leading-6 text-slate-400">Una sola configurazione viene usata come predefinita dall’applicazione.</p>
+                        <h2 id="ai-configuration-heading" class="text-xl font-semibold">Dati dell’integrazione</h2>
+                        <p class="mt-2 text-sm leading-6 text-slate-400">Potrai scegliere dal riepilogo quale integrazione rendere attiva.</p>
                     </div>
-                    @if ($setting)
-                        <span class="rounded-full bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-300">Configurata</span>
-                    @endif
+                    @php
+                        $status = $integration?->status;
+                        $statusDetails = match ($status) {
+                            'verified' => ['label' => 'Credenziali verificate', 'class' => 'bg-emerald-400/10 text-emerald-300', 'icon' => '✓'],
+                            'error' => ['label' => 'Verifica non riuscita', 'class' => 'bg-rose-400/10 text-rose-300', 'icon' => '!'],
+                            'configured' => ['label' => 'Salvata, da verificare', 'class' => 'bg-amber-400/10 text-amber-200', 'icon' => '•'],
+                            default => ['label' => 'Nuova', 'class' => 'bg-slate-800 text-slate-400', 'icon' => '＋'],
+                        };
+                    @endphp
+                    <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold {{ $statusDetails['class'] }}" role="status">
+                        <span aria-hidden="true">{{ $statusDetails['icon'] }}</span>
+                        {{ $statusDetails['label'] }}
+                    </span>
                 </div>
 
-                <form method="POST" action="{{ route('settings.ai.update') }}" class="mt-7 space-y-6">
+                @if ($integration?->status === 'verified')
+                    <div class="mt-5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm leading-6 text-emerald-100">
+                        <p class="font-semibold">Collegamento operativo</p>
+                        <p class="mt-1">La API key è stata accettata dal fornitore e il modello selezionato risulta disponibile.</p>
+                        @if ($integration->last_tested_at)
+                            <p class="mt-1 text-xs text-emerald-200/70">Ultima verifica: {{ $integration->last_tested_at->format('d/m/Y H:i') }}</p>
+                        @endif
+                    </div>
+                @elseif ($integration?->status === 'error')
+                    <div class="mt-5 rounded-xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm leading-6 text-rose-100">
+                        <p class="font-semibold">La configurazione richiede attenzione</p>
+                        <p class="mt-1">{{ $integration->last_error }}</p>
+                    </div>
+                @elseif ($integration)
+                    <div class="mt-5 rounded-xl border border-amber-400/20 bg-amber-400/10 p-4 text-sm leading-6 text-amber-100">
+                        <p class="font-semibold">Credenziali salvate, ma non ancora verificate</p>
+                        <p class="mt-1">Usa il pulsante qui sotto per controllare chiave e modello con una richiesta di sola lettura.</p>
+                    </div>
+                @endif
+
+                <form method="POST" action="{{ $integration ? route('settings.ai.update', $integration) : route('settings.ai.store') }}" class="mt-7 space-y-6">
                     @csrf
-                    @method('PUT')
+                    @if ($integration)
+                        @method('PUT')
+                    @endif
+
+                    <div>
+                        <label for="name" class="block text-sm font-medium text-slate-200">Nome integrazione</label>
+                        <input id="name" name="name" type="text" maxlength="100" value="{{ old('name', $integration?->name) }}" placeholder="Es. OpenAI principale" class="mt-2">
+                        <p class="mt-2 text-xs leading-5 text-slate-500">Facoltativo. Serve a distinguere facilmente più collegamenti; se vuoto useremo il nome del fornitore.</p>
+                    </div>
 
                     <div>
                         <label for="ai_provider" class="block text-sm font-medium text-slate-200">Fornitore AI <span class="text-rose-300">*</span></label>
@@ -68,9 +107,9 @@
                     </div>
 
                     <div>
-                        <label for="api_key" class="block text-sm font-medium text-slate-200">API key @unless($setting)<span class="text-rose-300">*</span>@endunless</label>
+                        <label for="api_key" class="block text-sm font-medium text-slate-200">API key @unless($integration)<span class="text-rose-300">*</span>@endunless</label>
                         <input id="api_key" name="api_key" type="password" value="" autocomplete="new-password" spellcheck="false" class="mt-2">
-                        @if ($setting)
+                        @if ($integration)
                             <p class="mt-2 text-xs leading-5 text-slate-500">La chiave salvata non viene mai mostrata. Lascia vuoto per mantenerla; se cambi fornitore devi inserirne una nuova.</p>
                         @else
                             <p class="mt-2 text-xs leading-5 text-slate-500">Copia qui la chiave segreta generata dal fornitore. Non inserirla mai in GitHub o in file versionati.</p>
@@ -78,14 +117,19 @@
                     </div>
 
                     <div class="rounded-xl border border-sky-500/20 bg-sky-500/10 p-4 text-xs leading-5 text-sky-100">
-                        L’intera configurazione, inclusa la API key, viene cifrata prima di essere salvata nel database. Il segreto non viene restituito nell’HTML, nei messaggi o nei log.
+                        La API key viene cifrata prima di essere salvata nel database. Il segreto non viene restituito nell’HTML, nei messaggi o nei log.
                     </div>
 
-                    <button type="submit" class="w-full rounded-xl bg-violet-400 px-5 py-3 font-semibold text-violet-950 hover:bg-violet-300">{{ $setting ? 'Salva modifiche' : 'Salva integrazione' }}</button>
+                    <button type="submit" class="w-full rounded-xl bg-violet-400 px-5 py-3 font-semibold text-violet-950 hover:bg-violet-300">{{ $integration ? 'Salva modifiche' : 'Crea integrazione' }}</button>
                 </form>
 
-                @if ($setting)
-                    <form method="POST" action="{{ route('settings.ai.destroy') }}" class="mt-4" onsubmit="return confirm('Vuoi rimuovere la configurazione AI da questa installazione?');">
+                @if ($integration)
+                    <form method="POST" action="{{ route('settings.ai.verify', $integration) }}" class="mt-4">
+                        @csrf
+                        <button type="submit" class="w-full rounded-xl border border-emerald-400/40 bg-emerald-400/10 px-5 py-3 font-semibold text-emerald-200 hover:bg-emerald-400/20">Verifica credenziali</button>
+                        <p class="mt-2 text-center text-xs leading-5 text-slate-500">Controllo in sola lettura: non genera testo e non usa token.</p>
+                    </form>
+                    <form method="POST" action="{{ route('settings.ai.destroy', $integration) }}" class="mt-4" onsubmit="return confirm('Vuoi rimuovere questa integrazione AI?');">
                         @csrf
                         @method('DELETE')
                         <button type="submit" class="w-full border border-rose-500/30 bg-transparent text-rose-300 hover:bg-rose-500/10">Rimuovi configurazione</button>
@@ -104,14 +148,19 @@
                         <h3 class="text-lg font-semibold">OpenAI</h3>
                         <span class="rounded-full bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-300">API Responses</span>
                     </div>
+                    <div class="mt-4 rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm leading-6 text-amber-50">
+                        <p class="font-semibold text-amber-100">Prima di creare la chiave</p>
+                        <p class="mt-1">Se OpenAI ti mostra un campo per un <strong>codice di autenticazione</strong>, sei ancora nel login della piattaforma. Quel codice serve solo a verificare l’accesso al tuo account (per esempio tramite il metodo di verifica mostrato da OpenAI): <strong>non è la API key</strong> e non devi abilitarlo dentro Monitoring Hub.</p>
+                        <p class="mt-2">Completa il login solo se riconosci l’account e il metodo di verifica. Dopo l’accesso devi arrivare alla pagina del progetto con il pulsante per creare una nuova chiave segreta. Se non riconosci la richiesta o non puoi ricevere il codice, interrompi il flusso e recupera prima l’accesso all’account OpenAI.</p>
+                    </div>
                     <ol class="mt-4 list-decimal space-y-2 pl-5 text-sm leading-6 text-slate-400">
-                        <li>Accedi alla piattaforma OpenAI e apri la pagina delle API key.</li>
-                        <li>Crea una chiave per il progetto destinato a questa applicazione e copiala quando viene mostrata.</li>
-                        <li>Consulta il catalogo modelli e scegli un modello disponibile per il tuo progetto.</li>
-                        <li>Seleziona <strong class="text-slate-200">OpenAI</strong> qui a sinistra, scegli il modello e incolla la chiave.</li>
+                        <li>Apri la console API OpenAI e, se richiesto, accedi con lo stesso account OpenAI che vuoi usare per questa installazione.</li>
+                        <li>Seleziona il progetto corretto, crea una nuova chiave segreta e copiala subito: il valore completo viene mostrato solo durante la creazione.</li>
+                        <li>Consulta il catalogo modelli e scegli un modello disponibile per quel progetto, ad esempio <code class="rounded bg-slate-950/60 px-1.5 py-0.5 text-amber-100">gpt-5.4-mini</code>.</li>
+                        <li>Torna qui, seleziona <strong class="text-slate-200">OpenAI</strong>, scegli il modello e incolla la chiave nel campo <strong class="text-slate-200">API key</strong>.</li>
                     </ol>
                     <div class="mt-5 flex flex-wrap gap-2">
-                        <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer" class="inline-flex rounded-lg border border-sky-500/30 px-3 py-2 text-sm font-medium text-sky-300 no-underline hover:bg-sky-500/10">Apri API key ↗</a>
+                        <a href="https://platform.openai.com/settings/organization/api-keys" target="_blank" rel="noreferrer" class="inline-flex rounded-lg border border-sky-500/30 px-3 py-2 text-sm font-medium text-sky-300 no-underline hover:bg-sky-500/10">Apri console API key ↗</a>
                         <a href="https://developers.openai.com/api/docs/quickstart" target="_blank" rel="noreferrer" class="inline-flex rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-300 no-underline hover:bg-slate-800">Guida ufficiale ↗</a>
                         <a href="https://developers.openai.com/api/docs/models" target="_blank" rel="noreferrer" class="inline-flex rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-300 no-underline hover:bg-slate-800">Catalogo modelli ↗</a>
                     </div>

@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\IntegrationSetting;
+use App\Models\AiIntegration;
 use App\Models\Site;
 use Illuminate\View\View;
 
@@ -10,8 +10,8 @@ class DashboardController extends Controller
 {
     public function __invoke(): View
     {
-        $aiSetting = IntegrationSetting::query()
-            ->where('provider', IntegrationSetting::AI)
+        $aiIntegration = AiIntegration::query()
+            ->where('active_marker', 'active')
             ->first();
 
         return view('dashboard', [
@@ -19,7 +19,7 @@ class DashboardController extends Controller
             'connectedAnalyticsCount' => Site::query()
                 ->whereHas('googleAnalyticsProperty.connection', fn ($query) => $query->where('status', 'active'))
                 ->count(),
-            'aiIntegration' => $aiSetting?->configuration,
+            'aiIntegration' => $aiIntegration,
         ]);
     }
 }

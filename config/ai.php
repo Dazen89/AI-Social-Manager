@@ -4,9 +4,11 @@ return [
     'connections' => [
         'openai' => [
             'endpoint' => 'https://api.openai.com/v1/responses',
+            'models_endpoint' => 'https://api.openai.com/v1/models',
         ],
         'anthropic' => [
             'endpoint' => 'https://api.anthropic.com/v1/messages',
+            'models_endpoint' => 'https://api.anthropic.com/v1/models',
             'api_version' => '2023-06-01',
         ],
     ],
