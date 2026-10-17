@@ -30,6 +30,27 @@ INITIAL_ADMIN_PASSWORD="una-password-di-almeno-12-caratteri"
 
 Il repository non prevede registrazione pubblica. Il seeder crea il primo amministratore e non sovrascrive la password di un utente già esistente.
 
+## Aggiornamento della VPS
+
+Su una VPS Linux già configurata, l’intero aggiornamento può essere eseguito dalla cartella del progetto con un solo comando:
+
+```bash
+bash scripts/deploy.sh
+```
+
+Lo script:
+
+1. interrompe l’operazione se il checkout contiene modifiche locali o se il branch non ha un upstream;
+2. mette temporaneamente Laravel in modalità manutenzione;
+3. esegue `git pull --ff-only` senza creare merge automatici;
+4. installa le dipendenze PHP di produzione;
+5. applica le migrazioni con `php artisan migrate --force`;
+6. esegue `npm ci` e `npm run build`;
+7. pulisce le cache Laravel e ricompila le viste;
+8. riporta l’applicazione online anche se un passaggio fallisce.
+
+La VPS deve avere `git`, PHP, Composer, Node.js e npm disponibili per l’utente di deploy. Lo script non contiene credenziali, non modifica `.env` e non richiede privilegi `root`. Prima di migrazioni importanti esegui un backup del database. Per tornare a una revisione precedente, prepara un normale commit di revert e ridistribuiscilo; esegui `migrate:rollback` solo dopo aver verificato esplicitamente l’impatto sui dati.
+
 ## Collegamento Google Analytics 4
 
 L’integrazione usa OAuth 2.0 con il solo scope di lettura `analytics.readonly`. Credenziali dell’applicazione, access token e refresh token vengono cifrati usando la chiave dell’applicazione prima di essere salvati nel database.
