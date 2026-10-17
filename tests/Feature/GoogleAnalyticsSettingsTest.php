@@ -38,6 +38,7 @@ class GoogleAnalyticsSettingsTest extends TestCase
             ->assertSee('Configura schermata di consenso')
             ->assertSee('Ignora invece')
             ->assertSee('Google Analytics Admin API')
+            ->assertSee('Google Analytics Data API')
             ->assertSee('Crea credenziali → ID client OAuth')
             ->assertSee('https://dashboard.example.com/integrations/google-analytics/callback')
             ->assertSee('https://www.googleapis.com/auth/analytics.readonly')

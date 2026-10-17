@@ -89,6 +89,10 @@
                     </div>
 
                     <div class="flex min-w-56 flex-col items-stretch gap-3">
+                        @if ($analyticsIsConnected)
+                            <a href="{{ route('sites.show', $site) }}" class="rounded-xl bg-emerald-400 px-5 py-3 text-center font-semibold text-emerald-950 no-underline hover:bg-emerald-300">Apri panoramica dati</a>
+                        @endif
+
                         @if ($googleAnalyticsOAuthConfigured)
                             <a href="{{ route('google-analytics.connect', $site) }}" class="rounded-xl bg-sky-500 px-5 py-3 text-center font-semibold text-slate-950 no-underline hover:bg-sky-400">{{ $analyticsIsConnected ? 'Cambia account o proprietà' : 'Collega account Google' }}</a>
                         @else

@@ -1,6 +1,6 @@
 # Monitoring Hub — Public project context
 
-_Status: authentication, the site registry and the Google Analytics OAuth connection flow are implemented. Analytics report retrieval is the next development milestone. Features not marked implemented are planned._
+_Status: authentication, the site registry, the Google Analytics OAuth connection flow and a first site-level analytics overview are implemented. Features not marked implemented are planned._
 
 ## Purpose
 Monitoring Hub is a private, reusable dashboard for small teams that need to centralize the services used to monitor websites they own or are explicitly authorized to manage.
@@ -21,8 +21,8 @@ The dashboard may run on a different subdomain from the monitored website. It mu
 3. **Service selection — implemented foundation:** after creating a site, administrators manage it from a dedicated page and review the optional services available for connection. Provider-specific fields do not belong in the initial site form.
 4. **Google Analytics connection — implemented:** guided installation-level OAuth credential setup, read-only OAuth flow, encrypted credential and token storage, token refresh, account/property discovery, explicit server-verified property selection, matching web-stream discovery, disconnect/revocation and clear connection health. Manual provider identifiers are not the primary setup path.
 5. **Page catalog — planned:** import canonical pages from an approved sitemap or read-only source connector, normalize URLs and prevent duplicates. Analytics rows are metrics, not the canonical source of website pages.
-6. **Measurement — planned:** query Google Analytics Data API at controlled intervals, cache responses, retain useful snapshots and expose unavailable or delayed metrics explicitly.
-7. **Site-focused dashboard — planned:** show traffic and engagement alongside the relevant site and pages, with date filters, comparisons and provider sync status.
+6. **Measurement — implemented foundation:** query Google Analytics Data API on demand through one batched request, filter by the registered hostname, cache responses for ten minutes and expose unavailable or delayed metrics explicitly. Scheduled snapshots and historical persistence remain planned.
+7. **Site-focused dashboard — implemented foundation:** each connected site has a 7/28/90-day overview with traffic totals, daily sessions, pages, acquisition channels, devices and countries. Comparisons, richer page drill-down and provider sync history remain planned.
 8. **Additional adapters — future:** other analytics, monitoring, content and social services may be introduced behind configurable contracts without coupling the core domain to one provider.
 
 ## Domain principles
@@ -50,9 +50,9 @@ The dashboard may run on a different subdomain from the monitored website. It mu
 
 **D. Page catalog:** sitemap or source connector, canonical URL normalization, sync history and deduplication.
 
-**E. Analytics reports:** site and page metrics, cache, quotas, retries and optional snapshots.
+**E. Analytics reports — implemented foundation:** site and page metrics, hostname filtering, bounded retries and short-lived cache. Quota telemetry and optional persistent snapshots remain planned.
 
-**F. Monitoring dashboard:** date ranges, comparisons, sync health and useful site/page views.
+**F. Monitoring dashboard — implemented foundation:** date ranges and a useful site overview. Comparisons, detailed sync health and page views remain planned.
 
 **G. Additional services:** introduce new providers only when there is a concrete use case and keep them optional.
 

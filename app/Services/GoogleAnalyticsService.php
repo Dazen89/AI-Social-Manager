@@ -227,7 +227,7 @@ class GoogleAnalyticsService
     private function get(GoogleAnalyticsConnection $connection, string $url, array $query = []): array
     {
         $response = Http::acceptJson()
-            ->withToken($this->accessToken($connection))
+            ->withToken($this->validAccessToken($connection))
             ->timeout(15)
             ->retry(2, 250, throw: false)
             ->get($url, $query);
@@ -250,7 +250,7 @@ class GoogleAnalyticsService
         return $payload;
     }
 
-    private function accessToken(GoogleAnalyticsConnection $connection): string
+    public function validAccessToken(GoogleAnalyticsConnection $connection): string
     {
         if ($connection->token_expires_at?->isAfter(now()->addMinute())) {
             return $connection->access_token;

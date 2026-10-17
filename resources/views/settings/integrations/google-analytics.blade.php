@@ -49,9 +49,12 @@
                     <li class="flex gap-4">
                         <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-500/15 text-sm font-semibold text-sky-300">1</span>
                         <div class="min-w-0 flex-1">
-                            <h3 class="font-semibold">Abilita Google Analytics Admin API</h3>
-                            <p class="mt-1 text-sm leading-6 text-slate-400">Apri la libreria dell’API nello stesso progetto e premi <strong class="text-slate-200">Abilita</strong>. Se vedi “Gestisci”, è già attiva.</p>
-                            <a href="https://console.cloud.google.com/apis/library/analyticsadmin.googleapis.com" target="_blank" rel="noreferrer" class="mt-3 inline-flex rounded-lg border border-sky-500/30 px-3 py-2 text-sm font-medium text-sky-300 no-underline hover:bg-sky-500/10">Apri Google Analytics Admin API ↗</a>
+                            <h3 class="font-semibold">Abilita le due API Google Analytics</h3>
+                            <p class="mt-1 text-sm leading-6 text-slate-400">Nel medesimo progetto abilita <strong class="text-slate-200">Google Analytics Admin API</strong>, usata per trovare account e proprietà, e <strong class="text-slate-200">Google Analytics Data API</strong>, usata per leggere i report. In entrambe le pagine premi <strong class="text-slate-200">Abilita</strong>; se vedi “Gestisci”, l’API è già attiva.</p>
+                            <div class="mt-3 flex flex-wrap gap-2">
+                                <a href="https://console.cloud.google.com/apis/library/analyticsadmin.googleapis.com" target="_blank" rel="noreferrer" class="inline-flex rounded-lg border border-sky-500/30 px-3 py-2 text-sm font-medium text-sky-300 no-underline hover:bg-sky-500/10">Apri Admin API ↗</a>
+                                <a href="https://console.cloud.google.com/apis/library/analyticsdata.googleapis.com" target="_blank" rel="noreferrer" class="inline-flex rounded-lg border border-sky-500/30 px-3 py-2 text-sm font-medium text-sky-300 no-underline hover:bg-sky-500/10">Apri Data API ↗</a>
+                            </div>
                         </div>
                     </li>
                     <li class="flex gap-4">

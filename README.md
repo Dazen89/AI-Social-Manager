@@ -37,7 +37,7 @@ L’integrazione usa OAuth 2.0 con il solo scope di lettura `analytics.readonly`
 Per configurare una nuova installazione:
 
 1. Apri **Impostazioni → Google Analytics** nella dashboard e mantienila aperta come guida.
-2. Crea o seleziona un progetto in Google Cloud e abilita **Google Analytics Admin API**.
+2. Crea o seleziona un progetto in Google Cloud e abilita sia **Google Analytics Admin API** sia **Google Analytics Data API**. La prima scopre account, proprietà e stream; la seconda legge i report della panoramica.
 3. In **Google Auth Platform → Branding** configura nome applicazione, email di assistenza, pubblico ed email di contatto.
 4. Se il pubblico è **Esterno** e l’app è in modalità **Test**, aggiungi in **Pubblico → Utenti di test** gli account Google che potranno collegare Analytics. I refresh token delle app esterne in modalità Test possono scadere dopo sette giorni; per l’uso continuativo occorre passare in produzione e seguire le eventuali richieste di verifica di Google.
 5. In **Accesso ai dati** aggiungi lo scope di sola lettura `https://www.googleapis.com/auth/analytics.readonly`.
@@ -70,7 +70,9 @@ Documentazione ufficiale:
 
 - [OAuth 2.0 per applicazioni web](https://developers.google.com/identity/protocols/oauth2/web-server)
 - [Google Analytics Admin API](https://developers.google.com/analytics/devguides/config/admin/v1)
+- [Google Analytics Data API](https://developers.google.com/analytics/devguides/reporting/data/v1)
 - [Elenco account e proprietà accessibili](https://developers.google.com/analytics/devguides/config/admin/v1/rest/v1beta/accountSummaries/list)
+- [Report multipli in una richiesta](https://developers.google.com/analytics/devguides/reporting/data/v1/rest/v1beta/properties/batchRunReports)
 
 ## Flusso utente
 
@@ -80,8 +82,9 @@ Documentazione ufficiale:
 4. Apri **Gestisci → Servizi e integrazioni**.
 5. Seleziona **Collega account Google** e autorizza l’accesso in sola lettura.
 6. Scegli una proprietà dall’elenco verificato restituito da Google.
+7. Torna a **Siti** e apri la panoramica del sito per consultare i report degli ultimi 7, 28 o 90 giorni.
 
-Se esiste uno stream web con lo stesso dominio del sito, l’applicazione salva automaticamente anche Data Stream ID e Measurement ID. In caso contrario la proprietà resta collegata e viene mostrato un avviso esplicito.
+Se esiste uno stream web con lo stesso dominio del sito, l’applicazione salva automaticamente anche Data Stream ID e Measurement ID. In caso contrario la proprietà resta collegata e viene mostrato un avviso esplicito. La panoramica interroga la Data API su richiesta, filtra i report per l’hostname registrato e conserva la risposta in cache per dieci minuti per ridurre latenza e consumo di quota.
 
 ## Verifiche
 

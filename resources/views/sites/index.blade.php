@@ -36,13 +36,18 @@
                         <div class="flex flex-wrap items-start justify-between gap-4">
                             <div>
                                 <div class="flex flex-wrap items-center gap-3">
-                                    <h2 class="text-xl font-semibold">{{ $site->name }}</h2>
+                                    <h2 class="text-xl font-semibold">
+                                        <a href="{{ route('sites.show', $site) }}" class="text-slate-100 no-underline hover:text-sky-300">{{ $site->name }}</a>
+                                    </h2>
                                     <span class="rounded-full px-2.5 py-1 text-xs font-medium {{ $site->is_active ? 'bg-emerald-400/10 text-emerald-300' : 'bg-slate-700 text-slate-300' }}">{{ $site->is_active ? 'Attivo' : 'Sospeso' }}</span>
                                 </div>
                                 <a href="{{ $site->base_url }}" target="_blank" rel="noopener noreferrer" class="mt-2 inline-block text-sm text-sky-400">{{ $site->host }}</a>
                             </div>
 
-                            <a href="{{ route('sites.edit', $site) }}" class="rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 no-underline hover:border-slate-500">Gestisci</a>
+                            <div class="flex flex-wrap gap-2">
+                                <a href="{{ route('sites.show', $site) }}" class="rounded-lg bg-sky-500 px-4 py-2 text-sm font-semibold text-slate-950 no-underline hover:bg-sky-400">Apri panoramica</a>
+                                <a href="{{ route('sites.edit', $site) }}" class="rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 no-underline hover:border-slate-500">Gestisci</a>
+                            </div>
                         </div>
 
                         <div class="mt-5 border-t border-slate-800 pt-5">

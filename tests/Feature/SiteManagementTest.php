@@ -77,6 +77,12 @@ class SiteManagementTest extends TestCase
             ->assertSee('Configura Google Analytics')
             ->assertSee('Apri la procedura guidata')
             ->assertDontSee('GOOGLE_ANALYTICS_CLIENT_ID');
+
+        $this->actingAs($admin)
+            ->get(route('sites.index'))
+            ->assertOk()
+            ->assertSee('Apri panoramica')
+            ->assertSee(route('sites.show', $site), false);
     }
 
     public function test_provider_metadata_is_ignored_during_site_registration(): void

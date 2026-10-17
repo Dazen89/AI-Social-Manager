@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\GoogleAnalyticsConnectionController;
 use App\Http\Controllers\GoogleAnalyticsSettingsController;
+use App\Http\Controllers\SiteAnalyticsOverviewController;
 use App\Http\Controllers\SiteController;
 use Illuminate\Support\Facades\Route;
 
@@ -20,6 +21,7 @@ Route::middleware('auth')->group(function (): void {
     Route::middleware('admin')->group(function (): void {
         Route::get('/dashboard', DashboardController::class)->name('dashboard');
         Route::resource('sites', SiteController::class)->only(['index', 'create', 'store', 'edit', 'update']);
+        Route::get('/sites/{site}', SiteAnalyticsOverviewController::class)->name('sites.show');
 
         Route::get('/settings/integrations/google-analytics', [GoogleAnalyticsSettingsController::class, 'edit'])
             ->name('settings.google-analytics.edit');
