@@ -40,7 +40,7 @@
                     @php
                         $status = $integration?->status;
                         $statusDetails = match ($status) {
-                            'verified' => ['label' => 'Credenziali verificate', 'class' => 'bg-emerald-400/10 text-emerald-300', 'icon' => '✓'],
+                            'verified' => ['label' => 'Chiave e modello verificati', 'class' => 'bg-emerald-400/10 text-emerald-300', 'icon' => '✓'],
                             'error' => ['label' => 'Verifica non riuscita', 'class' => 'bg-rose-400/10 text-rose-300', 'icon' => '!'],
                             'configured' => ['label' => 'Salvata, da verificare', 'class' => 'bg-amber-400/10 text-amber-200', 'icon' => '•'],
                             default => ['label' => 'Nuova', 'class' => 'bg-slate-800 text-slate-400', 'icon' => '＋'],

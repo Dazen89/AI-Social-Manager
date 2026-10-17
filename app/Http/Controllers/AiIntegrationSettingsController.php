@@ -16,6 +16,11 @@ class AiIntegrationSettingsController extends Controller
     {
         return view('settings.integrations.ai-index', [
             'integrations' => AiIntegration::query()
+                ->withCount('usageRecords')
+                ->withSum('usageRecords as usage_input_tokens', 'input_tokens')
+                ->withSum('usageRecords as usage_output_tokens', 'output_tokens')
+                ->withSum('usageRecords as usage_total_tokens', 'total_tokens')
+                ->withMax('usageRecords as usage_last_occurred_at', 'occurred_at')
                 ->orderByDesc('active_marker')
                 ->orderBy('name')
                 ->get(),
@@ -134,7 +139,7 @@ class AiIntegrationSettingsController extends Controller
 
         return redirect()
             ->route('settings.ai.index')
-            ->with('status', "{$aiIntegration->name}: credenziali e modello verificati correttamente.");
+            ->with('status', "{$aiIntegration->name}: chiave e modello verificati. Questa verifica non controlla credito e limiti di spesa del progetto.");
     }
 
     public function destroy(AiIntegration $aiIntegration): RedirectResponse

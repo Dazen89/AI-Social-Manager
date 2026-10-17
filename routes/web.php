@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AiIntegrationSettingsController;
+use App\Http\Controllers\AnalyticsInsightController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\GoogleAnalyticsConnectionController;
@@ -23,6 +24,8 @@ Route::middleware('auth')->group(function (): void {
         Route::get('/dashboard', DashboardController::class)->name('dashboard');
         Route::resource('sites', SiteController::class)->only(['index', 'create', 'store', 'edit', 'update']);
         Route::get('/sites/{site}', SiteAnalyticsOverviewController::class)->name('sites.show');
+        Route::post('/sites/{site}/analytics/insights', [AnalyticsInsightController::class, 'store'])
+            ->name('sites.analytics-insights.store');
 
         Route::get('/settings/integrations/google-analytics', [GoogleAnalyticsSettingsController::class, 'edit'])
             ->name('settings.google-analytics.edit');

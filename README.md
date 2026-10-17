@@ -110,7 +110,11 @@ Le integrazioni appartengono all’intera installazione e sono salvate nella tab
 - OpenAI Responses API (`POST /v1/responses`);
 - Anthropic Messages API (`POST /v1/messages`).
 
-Dopo il salvataggio, il riepilogo mostra lo stato **Da verificare**. Il pulsante **Verifica** esegue una richiesta di sola lettura a `GET /v1/models`, controlla che il modello scelto sia disponibile per la chiave e mostra **Credenziali verificate** oppure **Verifica non riuscita**. La verifica non genera contenuti.
+Dopo il salvataggio, il riepilogo mostra lo stato **Da verificare**. Il pulsante **Verifica** esegue una richiesta di sola lettura a `GET /v1/models`, controlla che il modello scelto sia disponibile per la chiave e mostra **Chiave e modello verificati** oppure **Verifica non riuscita**. Questa verifica non genera contenuti e quindi non conferma che il progetto disponga di credito o budget per una generazione.
+
+Quando Google Analytics e l’integrazione AI attiva sono entrambi collegati e verificati, la pagina del sito espone **Analizza con AI**. Il flusso confronta il periodo selezionato con quello precedente della stessa durata, prepara metriche aggregate su traffico, landing page, canali e dispositivi e richiede una risposta strutturata con criticità, opportunità, evidenze e prossime azioni. I report e lo snapshot aggregato sono cifrati nel database; le query string delle landing page vengono rimosse prima dell’invio. Se i dati e il modello non cambiano, l’analisi salvata viene riutilizzata senza una nuova chiamata a consumo.
+
+Ogni analisi registra separatamente numero di richieste e token in ingresso/uscita nella tabella `ai_usage_records`, senza copiare prompt o credenziali. Questi valori descrivono il consumo ma non rappresentano un costo monetario esatto. OpenAI espone il costo ufficiale dell’organizzazione con una Costs API amministrativa che richiede una Admin API key distinta dalla normale chiave di progetto; Monitoring Hub non richiede tale credenziale privilegiata e rimanda al pannello di fatturazione del provider.
 
 I test usano `Http::fake()` e non effettuano chiamate a consumo. Prima di collegare un flusso applicativo in produzione, configura budget e limiti presso il fornitore e conserva stabilmente `APP_KEY`, necessaria per decifrare le credenziali.
 
@@ -118,6 +122,7 @@ Documentazione ufficiale:
 
 - [Quickstart API OpenAI](https://developers.openai.com/api/docs/quickstart)
 - [Modelli OpenAI](https://developers.openai.com/api/docs/models)
+- [Costs API OpenAI](https://developers.openai.com/api/reference/resources/admin/subresources/organization/subresources/usage/methods/costs)
 - [Creare una API key Claude](https://platform.claude.com/docs/en/get-api-key)
 - [Modelli Claude](https://platform.claude.com/docs/en/models/overview)
 
@@ -129,7 +134,7 @@ Documentazione ufficiale:
 4. Apri **Gestisci → Servizi e integrazioni**.
 5. Seleziona **Collega account Google** e autorizza l’accesso in sola lettura.
 6. Scegli una proprietà dall’elenco verificato restituito da Google.
-7. Torna a **Siti** e apri la panoramica del sito per consultare i report degli ultimi 7, 28 o 90 giorni.
+7. Torna a **Siti** e apri la panoramica del sito per consultare i report degli ultimi 7, 28 o 90 giorni e, facoltativamente, generarne l’analisi AI.
 
 Se esiste uno stream web con lo stesso dominio del sito, l’applicazione salva automaticamente anche Data Stream ID e Measurement ID. In caso contrario la proprietà resta collegata e viene mostrato un avviso esplicito. La panoramica interroga la Data API su richiesta, filtra i report per l’hostname registrato e conserva la risposta in cache per dieci minuti per ridurre latenza e consumo di quota.
 

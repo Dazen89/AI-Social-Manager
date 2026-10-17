@@ -28,7 +28,7 @@
                         <p class="mt-2 text-lg font-semibold text-slate-100">{{ $aiIntegration->name }}</p>
                         <p class="mt-1 text-xs text-slate-500">{{ config('ai.providers.'.$aiIntegration->provider.'.name') }} · {{ config('ai.providers.'.$aiIntegration->provider.'.models.'.$aiIntegration->model, $aiIntegration->model) }}</p>
                         <p class="mt-2 text-xs font-medium {{ $aiIntegration->status === 'verified' ? 'text-emerald-300' : ($aiIntegration->status === 'error' ? 'text-rose-300' : 'text-amber-300') }}">
-                            {{ $aiIntegration->status === 'verified' ? 'Credenziali verificate' : ($aiIntegration->status === 'error' ? 'Verifica non riuscita' : 'Da verificare') }}
+                            {{ $aiIntegration->status === 'verified' ? 'Chiave e modello verificati' : ($aiIntegration->status === 'error' ? 'Verifica non riuscita' : 'Da verificare') }}
                         </p>
                     @else
                         <p class="mt-2 text-lg font-semibold text-amber-300">Da configurare</p>

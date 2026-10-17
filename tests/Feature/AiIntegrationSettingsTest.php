@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\AiIntegration;
+use App\Models\AiUsageRecord;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -235,6 +236,36 @@ class AiIntegrationSettingsTest extends TestCase
             ->assertSee(route('settings.ai.index'), false)
             ->assertSee('Claude principale')
             ->assertSee('Claude Sonnet 5.5');
+    }
+
+    public function test_integration_summary_shows_recorded_token_usage_without_claiming_an_exact_cost(): void
+    {
+        $admin = User::factory()->administrator()->create();
+        $integration = $this->createIntegration(
+            $admin,
+            provider: 'openai',
+            model: 'gpt-5.4-mini',
+            apiKey: 'synthetic-openai-key',
+            isActive: true,
+        );
+        AiUsageRecord::query()->create([
+            'ai_integration_id' => $integration->id,
+            'feature' => 'analytics_insight',
+            'provider' => 'openai',
+            'model' => 'gpt-5.4-mini',
+            'input_tokens' => 1200,
+            'output_tokens' => 450,
+            'total_tokens' => 1650,
+            'occurred_at' => now(),
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('settings.ai.index'))
+            ->assertOk()
+            ->assertSee('Consumi e costi')
+            ->assertSee('1.650')
+            ->assertSee('Admin API key')
+            ->assertSee('https://developers.openai.com/api/reference/resources/admin/subresources/organization/subresources/usage/methods/costs', false);
     }
 
     private function createIntegration(

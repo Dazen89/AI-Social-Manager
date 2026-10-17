@@ -113,6 +113,123 @@
                     </dl>
                 </section>
 
+                @php
+                    $analysis = $analyticsInsight?->analysis ?? null;
+                @endphp
+                <section class="mt-7 rounded-3xl border border-violet-400/30 bg-violet-400/[0.04] p-6 sm:p-8" aria-labelledby="ai-insight-heading">
+                    <div class="flex flex-wrap items-start justify-between gap-5">
+                        <div class="max-w-3xl">
+                            <p class="text-sm font-semibold uppercase tracking-[0.18em] text-violet-300">Analista AI</p>
+                            <h2 id="ai-insight-heading" class="mt-2 text-2xl font-semibold">I numeri tradotti in decisioni</h2>
+                            <p class="mt-2 leading-7 text-slate-400">Confronta questo periodo con quello precedente, evidenzia rischi e opportunità e propone azioni motivate dai dati. L’analisi non modifica il sito né Google Analytics.</p>
+                        </div>
+
+                        @if ($activeAiIntegration?->status === 'verified')
+                            <form method="POST" action="{{ route('sites.analytics-insights.store', $site) }}">
+                                @csrf
+                                <input type="hidden" name="range" value="{{ $days }}">
+                                <button type="submit" class="rounded-xl bg-violet-400 px-5 py-3 font-semibold text-slate-950 hover:bg-violet-300">
+                                    {{ $analysis ? 'Aggiorna analisi' : 'Analizza con AI' }}
+                                </button>
+                            </form>
+                        @else
+                            <a href="{{ route('settings.ai.index') }}" class="rounded-xl border border-violet-400/40 px-5 py-3 font-semibold text-violet-200 no-underline hover:bg-violet-400/10">
+                                {{ $activeAiIntegration ? 'Verifica integrazione AI' : 'Configura integrazione AI' }}
+                            </a>
+                        @endif
+                    </div>
+
+                    @if (session('analytics_insight_status'))
+                        <div class="mt-5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200" role="status">{{ session('analytics_insight_status') }}</div>
+                    @endif
+
+                    @if (session('analytics_insight_error'))
+                        <div class="mt-5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200" role="alert">{{ session('analytics_insight_error') }}</div>
+                    @endif
+
+                    @if ($analysis)
+                        <div class="mt-7 border-t border-violet-400/20 pt-7">
+                            <div class="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
+                                <span>{{ config('ai.providers.'.$analyticsInsight->provider.'.models.'.$analyticsInsight->model, $analyticsInsight->model) }} · {{ $analyticsInsight->generated_at->format('d/m/Y H:i') }}</span>
+                                <span>{{ number_format($analyticsInsight->total_tokens, 0, ',', '.') }} token registrati</span>
+                            </div>
+                            <p class="mt-4 text-lg leading-8 text-slate-200">{{ $analysis['summary'] }}</p>
+
+                            <div class="mt-7 grid gap-4 lg:grid-cols-2">
+                                @foreach ($analysis['findings'] as $finding)
+                                    @php
+                                        $findingStyle = match ($finding['type']) {
+                                            'risk' => ['label' => 'Criticità', 'class' => 'bg-rose-400/10 text-rose-300'],
+                                            'opportunity' => ['label' => 'Opportunità', 'class' => 'bg-emerald-400/10 text-emerald-300'],
+                                            default => ['label' => 'Osservazione', 'class' => 'bg-sky-400/10 text-sky-300'],
+                                        };
+                                        $priorityLabel = match ($finding['priority']) {
+                                            'high' => 'Priorità alta',
+                                            'medium' => 'Priorità media',
+                                            default => 'Priorità bassa',
+                                        };
+                                    @endphp
+                                    <article class="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
+                                        <div class="flex flex-wrap items-center gap-2 text-xs font-semibold">
+                                            <span class="rounded-full px-2.5 py-1 {{ $findingStyle['class'] }}">{{ $findingStyle['label'] }}</span>
+                                            <span class="text-slate-500">{{ $priorityLabel }} · confidenza {{ $finding['confidence'] }}</span>
+                                        </div>
+                                        <h3 class="mt-4 text-lg font-semibold">{{ $finding['title'] }}</h3>
+                                        <p class="mt-2 text-sm leading-6 text-slate-400">{{ $finding['explanation'] }}</p>
+                                        <ul class="mt-3 space-y-1 text-sm text-slate-500">
+                                            @foreach ($finding['evidence'] as $evidence)
+                                                <li>• {{ $evidence }}</li>
+                                            @endforeach
+                                        </ul>
+                                        <p class="mt-4 rounded-xl bg-violet-400/[0.07] p-3 text-sm leading-6 text-violet-100"><strong>Azione:</strong> {{ $finding['recommended_action'] }}</p>
+                                    </article>
+                                @endforeach
+                            </div>
+
+                            <div class="mt-7 grid gap-6 lg:grid-cols-2">
+                                <div>
+                                    <h3 class="text-lg font-semibold">Prossime azioni</h3>
+                                    <ol class="mt-4 space-y-3">
+                                        @foreach ($analysis['next_actions'] as $action)
+                                            <li class="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+                                                <div class="flex flex-wrap justify-between gap-2">
+                                                    <span class="font-semibold text-slate-200">{{ $action['title'] }}</span>
+                                                    <span class="text-xs text-slate-500">priorità {{ $action['priority'] }} · impegno {{ $action['effort'] }}</span>
+                                                </div>
+                                                <p class="mt-2 text-sm leading-6 text-slate-400">{{ $action['why'] }}</p>
+                                            </li>
+                                        @endforeach
+                                    </ol>
+                                </div>
+                                <div>
+                                    <h3 class="text-lg font-semibold">Cose da non fare</h3>
+                                    <div class="mt-4 space-y-3">
+                                        @foreach ($analysis['things_to_avoid'] as $item)
+                                            <div class="rounded-xl border border-amber-500/20 bg-amber-500/[0.05] p-4">
+                                                <p class="font-semibold text-amber-100">{{ $item['title'] }}</p>
+                                                <p class="mt-2 text-sm leading-6 text-slate-400">{{ $item['reason'] }}</p>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            </div>
+
+                            <details class="mt-7 rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-400">
+                                <summary class="cursor-pointer font-semibold text-slate-300">Limiti di questa analisi</summary>
+                                <ul class="mt-3 space-y-2">
+                                    @foreach ($analysis['limitations'] as $limitation)
+                                        <li>• {{ $limitation }}</li>
+                                    @endforeach
+                                </ul>
+                            </details>
+                        </div>
+                    @elseif ($activeAiIntegration?->status === 'verified')
+                        <p class="mt-6 rounded-xl border border-dashed border-slate-700 p-5 text-sm text-slate-400">Nessuna analisi salvata per questo intervallo. La chiamata parte solo quando premi “Analizza con AI”.</p>
+                    @else
+                        <p class="mt-6 rounded-xl border border-dashed border-slate-700 p-5 text-sm text-slate-400">Per usare l’analista devi avere una sola integrazione AI attiva e verificata.</p>
+                    @endif
+                </section>
+
                 <section class="mt-7 rounded-3xl border border-slate-800 bg-slate-900 p-6 sm:p-8" aria-labelledby="trend-heading">
                     <div class="flex flex-wrap items-start justify-between gap-3">
                         <div>

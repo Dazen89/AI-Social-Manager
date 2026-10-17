@@ -1,6 +1,6 @@
 # Monitoring Hub — Public project context
 
-_Status: authentication, the site registry, the Google Analytics OAuth connection flow, a first site-level analytics overview and the installation-level AI provider configuration are implemented. Features not marked implemented are planned._
+_Status: authentication, the site registry, the Google Analytics OAuth connection flow, the site-level analytics overview, AI provider configuration and on-demand AI analytics insights are implemented. Features not marked implemented are planned._
 
 ## Purpose
 Monitoring Hub is a private, reusable dashboard for small teams that need to centralize the services used to monitor websites they own or are explicitly authorized to manage.
@@ -22,8 +22,8 @@ The dashboard may run on a different subdomain from the monitored website. It mu
 4. **Google Analytics connection — implemented:** guided installation-level OAuth credential setup, read-only OAuth flow, encrypted credential and token storage, token refresh, account/property discovery, explicit server-verified property selection, matching web-stream discovery, disconnect/revocation and clear connection health. Manual provider identifiers are not the primary setup path.
 5. **Page catalog — planned:** import canonical pages from an approved sitemap or read-only source connector, normalize URLs and prevent duplicates. Analytics rows are metrics, not the canonical source of website pages.
 6. **Measurement — implemented foundation:** query Google Analytics Data API on demand through one batched request, filter by the registered hostname, cache responses for ten minutes and expose unavailable or delayed metrics explicitly. Scheduled snapshots and historical persistence remain planned.
-7. **Site-focused dashboard — implemented foundation:** each connected site has a 7/28/90-day overview with traffic totals, daily sessions, pages, acquisition channels, devices and countries. Comparisons, richer page drill-down and provider sync history remain planned.
-8. **AI provider integration — implemented foundation:** administrators can configure multiple OpenAI or Anthropic connections, choose a supported model, save each API key encrypted at rest and switch the single active integration. A server-side adapter exposes text generation through the active provider's official API without exposing credentials to the browser. Product workflows that consume generated content remain planned.
+7. **Site-focused dashboard — implemented foundation:** each connected site has a 7/28/90-day overview with traffic totals, a same-length previous-period comparison, daily sessions, pages, acquisition channels, devices and countries. Richer page drill-down and provider sync history remain planned.
+8. **AI provider integration — implemented:** administrators can configure multiple OpenAI or Anthropic connections, choose a supported model, save each API key encrypted at rest and switch the single active integration. The verified active integration can generate an on-demand structured interpretation of aggregate GA4 data with evidence, priorities, actions, cautions and explicit limitations. Reports and source snapshots are encrypted; query strings are removed before AI submission. Per-request token usage is recorded without storing prompts in usage logs. Exact provider billing is not inferred from tokens; OpenAI's organization Costs API requires a separate privileged Admin API key.
 9. **Additional adapters — future:** other analytics, monitoring, content and social services may be introduced behind configurable contracts without coupling the core domain to one provider.
 
 ## Domain principles
@@ -53,9 +53,9 @@ The dashboard may run on a different subdomain from the monitored website. It mu
 
 **E. Analytics reports — implemented foundation:** site and page metrics, hostname filtering, bounded retries and short-lived cache. Quota telemetry and optional persistent snapshots remain planned.
 
-**F. Monitoring dashboard — implemented foundation:** date ranges and a useful site overview. Comparisons, detailed sync health and page views remain planned.
+**F. Monitoring dashboard — implemented foundation:** date ranges, same-length period comparison, a useful site overview and on-demand AI interpretation. Detailed sync health and page views remain planned.
 
-**G. AI integration — implemented foundation:** installation-level provider, model and encrypted API-key settings, multi-connection summary with one active integration, official setup guidance and a server-side text-generation adapter. Content-generation workflows, approvals and usage controls remain planned.
+**G. AI integration — implemented foundation:** installation-level provider, model and encrypted API-key settings, multi-connection summary with one active integration, official setup guidance, structured analytics insights and token-usage telemetry. Monetary budget enforcement, content-generation workflows and approvals remain planned.
 
 **H. Additional services:** introduce new providers only when there is a concrete use case and keep them optional.
 

@@ -55,6 +55,35 @@ class GoogleAnalyticsReportService
     }
 
     /**
+     * @return array{
+     *     previous_summary: array<string, string>,
+     *     landing_pages: array<int, array<string, string>>,
+     *     device_performance: array<int, array<string, string>>
+     * }
+     */
+    public function insightData(GoogleAnalyticsProperty $property, string $host, int $days): array
+    {
+        $connection = $property->connection;
+
+        if (! $connection || $connection->status !== 'active') {
+            throw new GoogleAnalyticsReportException('Il collegamento Google Analytics non è attivo. Collegalo nuovamente prima di richiedere i dati.');
+        }
+
+        $cacheKey = implode('.', [
+            'google-analytics-insight-data',
+            $property->getKey(),
+            $connection->getKey(),
+            $property->property_id,
+            $days,
+            sha1($host),
+        ]);
+
+        return Cache::remember($cacheKey, now()->addMinutes(10), function () use ($property, $host, $days): array {
+            return $this->requestInsightData($property, $host, $days);
+        });
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function requestOverview(GoogleAnalyticsProperty $property, string $host, int $days): array
@@ -114,32 +143,7 @@ class GoogleAnalyticsReportService
                 'limit' => '1000',
             ]),
         ];
-
-        $url = self::DATA_API_ENDPOINT.'/properties/'.$property->property_id.':batchRunReports';
-        try {
-            $response = Http::acceptJson()
-                ->withToken($this->analytics->validAccessToken($property->connection))
-                ->timeout(20)
-                ->retry(2, 250, function (Throwable $exception): bool {
-                    return $exception instanceof ConnectionException
-                        || ($exception instanceof RequestException && $exception->response->serverError());
-                }, throw: false)
-                ->post($url, ['requests' => $requests]);
-        } catch (ConnectionException) {
-            throw new GoogleAnalyticsReportException('Google Analytics non è raggiungibile in questo momento. Controlla la connessione del server e riprova.');
-        }
-
-        if ($response->failed()) {
-            $this->throwReportException($property, $response->status(), (array) $response->json());
-        }
-
-        $payload = $response->json();
-
-        if (! is_array($payload) || ! is_array($payload['reports'] ?? null)) {
-            throw new GoogleAnalyticsReportException('Google Analytics ha restituito una risposta dati non valida. Riprova più tardi.');
-        }
-
-        $reports = array_values($payload['reports']);
+        $reports = $this->batchReports($property, $requests);
         $summary = $this->rows((array) ($reports[0] ?? []))[0] ?? [];
         $daily = $this->rows((array) ($reports[1] ?? []));
         $pages = $this->rows((array) ($reports[2] ?? []));
@@ -170,6 +174,102 @@ class GoogleAnalyticsReportService
             'start_date' => now()->subDays($days - 1)->toDateString(),
             'end_date' => now()->toDateString(),
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function requestInsightData(GoogleAnalyticsProperty $property, string $host, int $days): array
+    {
+        $currentDateRange = [
+            'startDate' => ($days - 1).'daysAgo',
+            'endDate' => 'today',
+        ];
+        $previousDateRange = [
+            'startDate' => (($days * 2) - 1).'daysAgo',
+            'endDate' => $days.'daysAgo',
+        ];
+        $hostFilter = [
+            'filter' => [
+                'fieldName' => 'hostName',
+                'stringFilter' => [
+                    'matchType' => 'EXACT',
+                    'value' => $host,
+                    'caseSensitive' => false,
+                ],
+            ],
+        ];
+
+        $reports = $this->batchReports($property, [
+            [
+                'dateRanges' => [$previousDateRange],
+                'dimensionFilter' => $hostFilter,
+                'metrics' => $this->fields([
+                    'activeUsers',
+                    'sessions',
+                    'screenPageViews',
+                    'engagedSessions',
+                    'engagementRate',
+                    'averageSessionDuration',
+                ]),
+            ],
+            [
+                'dateRanges' => [$currentDateRange],
+                'dimensionFilter' => $hostFilter,
+                'dimensions' => $this->fields(['landingPagePlusQueryString']),
+                'metrics' => $this->fields(['sessions', 'activeUsers', 'engagementRate', 'averageSessionDuration']),
+                'orderBys' => [['metric' => ['metricName' => 'sessions'], 'desc' => true]],
+                'limit' => '20',
+            ],
+            [
+                'dateRanges' => [$currentDateRange],
+                'dimensionFilter' => $hostFilter,
+                'dimensions' => $this->fields(['deviceCategory']),
+                'metrics' => $this->fields(['sessions', 'activeUsers', 'engagementRate', 'averageSessionDuration']),
+                'orderBys' => [['metric' => ['metricName' => 'sessions'], 'desc' => true]],
+                'limit' => '10',
+            ],
+        ]);
+
+        return [
+            'previous_summary' => $this->rows((array) ($reports[0] ?? []))[0] ?? [],
+            'landing_pages' => $this->rows((array) ($reports[1] ?? [])),
+            'device_performance' => $this->rows((array) ($reports[2] ?? [])),
+        ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $requests
+     * @return array<int, array<string, mixed>>
+     */
+    private function batchReports(GoogleAnalyticsProperty $property, array $requests): array
+    {
+        $url = self::DATA_API_ENDPOINT.'/properties/'.$property->property_id.':batchRunReports';
+
+        try {
+            $response = Http::acceptJson()
+                ->withToken($this->analytics->validAccessToken($property->connection))
+                ->timeout(20)
+                ->retry(2, 250, function (Throwable $exception): bool {
+                    return $exception instanceof ConnectionException
+                        || ($exception instanceof RequestException && $exception->response->serverError());
+                }, throw: false)
+                ->post($url, ['requests' => $requests]);
+        } catch (ConnectionException) {
+            throw new GoogleAnalyticsReportException('Google Analytics non è raggiungibile in questo momento. Controlla la connessione del server e riprova.');
+        }
+
+        if ($response->failed()) {
+            $this->throwReportException($property, $response->status(), (array) $response->json());
+        }
+
+        $payload = $response->json();
+
+        if (! is_array($payload) || ! is_array($payload['reports'] ?? null)) {
+            throw new GoogleAnalyticsReportException('Google Analytics ha restituito una risposta dati non valida. Riprova più tardi.');
+        }
+
+        return array_values($payload['reports']);
     }
 
     /**

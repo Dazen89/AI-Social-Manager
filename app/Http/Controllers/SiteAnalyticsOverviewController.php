@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Exceptions\GoogleAnalyticsException;
 use App\Exceptions\GoogleAnalyticsReportException;
+use App\Models\AiIntegration;
 use App\Models\Site;
 use App\Services\GoogleAnalyticsReportService;
 use Illuminate\Http\Request;
@@ -37,6 +38,13 @@ class SiteAnalyticsOverviewController extends Controller
             'overview' => $overview,
             'reportError' => $reportError,
             'days' => $days,
+            'activeAiIntegration' => AiIntegration::query()
+                ->where('active_marker', 'active')
+                ->first(),
+            'analyticsInsight' => $site->analyticsInsightReports()
+                ->where('range_days', $days)
+                ->latest('generated_at')
+                ->first(),
         ]);
     }
 }

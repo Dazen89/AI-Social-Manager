@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'name',
@@ -35,6 +36,16 @@ class AiIntegration extends Model
     public function configuredBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'configured_by_user_id');
+    }
+
+    public function usageRecords(): HasMany
+    {
+        return $this->hasMany(AiUsageRecord::class);
+    }
+
+    public function analyticsInsightReports(): HasMany
+    {
+        return $this->hasMany(AnalyticsInsightReport::class);
     }
 
     protected function isActive(): Attribute

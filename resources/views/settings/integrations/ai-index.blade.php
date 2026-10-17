@@ -27,6 +27,12 @@
             <div class="mt-6 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200" role="alert">{{ session('integration_error') }}</div>
         @endif
 
+        <section class="mt-8 rounded-2xl border border-slate-800 bg-slate-900/70 p-5 text-sm leading-6 text-slate-400">
+            <h2 class="font-semibold text-slate-200">Consumi e costi</h2>
+            <p class="mt-2">L’app registra richieste e token restituiti dai provider, senza salvare prompt o credenziali nel registro d’uso. I token permettono di controllare il consumo, ma non sono un importo monetario: prezzi, cache e tipi di token possono cambiare il calcolo.</p>
+            <p class="mt-2">Per OpenAI il costo ufficiale dell’organizzazione è disponibile tramite una API amministrativa separata, che richiede una Admin API key più privilegiata. Per sicurezza questa applicazione non la richiede: verifica l’importo esatto nel pannello di fatturazione del provider. <a href="https://developers.openai.com/api/reference/resources/admin/subresources/organization/subresources/usage/methods/costs" target="_blank" rel="noreferrer" class="text-sky-400">Documentazione Costs API ↗</a></p>
+        </section>
+
         @if ($integrations->isEmpty())
             <section class="mt-8 rounded-3xl border border-dashed border-slate-700 bg-slate-900/60 px-8 py-16 text-center">
                 <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-400/10 text-2xl text-violet-300" aria-hidden="true">✦</div>
@@ -41,7 +47,7 @@
                 @foreach ($integrations as $integration)
                     @php
                         $statusDetails = match ($integration->status) {
-                            'verified' => ['label' => 'Credenziali verificate', 'class' => 'bg-emerald-400/10 text-emerald-300', 'icon' => '✓'],
+                            'verified' => ['label' => 'Chiave e modello verificati', 'class' => 'bg-emerald-400/10 text-emerald-300', 'icon' => '✓'],
                             'error' => ['label' => 'Verifica non riuscita', 'class' => 'bg-rose-400/10 text-rose-300', 'icon' => '!'],
                             default => ['label' => 'Da verificare', 'class' => 'bg-amber-400/10 text-amber-200', 'icon' => '•'],
                         };
@@ -68,7 +74,30 @@
                             <p class="mt-4 rounded-xl border border-rose-500/20 bg-rose-500/10 p-3 text-sm leading-6 text-rose-100">{{ $integration->last_error }}</p>
                         @elseif ($integration->last_tested_at)
                             <p class="mt-4 text-xs text-slate-500">Ultima verifica: {{ $integration->last_tested_at->format('d/m/Y H:i') }}</p>
+                            <p class="mt-2 text-xs leading-5 text-slate-500">La verifica controlla accesso e modello, ma non esegue una generazione e non può confermare credito o budget disponibili.</p>
                         @endif
+
+                        <dl class="mt-5 grid grid-cols-2 gap-3 rounded-2xl border border-slate-800 bg-slate-950/50 p-4 text-sm">
+                            <div>
+                                <dt class="text-xs text-slate-500">Richieste registrate</dt>
+                                <dd class="mt-1 font-semibold text-slate-200">{{ number_format($integration->usage_records_count, 0, ',', '.') }}</dd>
+                            </div>
+                            <div>
+                                <dt class="text-xs text-slate-500">Token totali</dt>
+                                <dd class="mt-1 font-semibold text-slate-200">{{ number_format((int) $integration->usage_total_tokens, 0, ',', '.') }}</dd>
+                            </div>
+                            <div>
+                                <dt class="text-xs text-slate-500">Token in ingresso</dt>
+                                <dd class="mt-1 text-slate-300">{{ number_format((int) $integration->usage_input_tokens, 0, ',', '.') }}</dd>
+                            </div>
+                            <div>
+                                <dt class="text-xs text-slate-500">Token in uscita</dt>
+                                <dd class="mt-1 text-slate-300">{{ number_format((int) $integration->usage_output_tokens, 0, ',', '.') }}</dd>
+                            </div>
+                            @if ($integration->usage_last_occurred_at)
+                                <div class="col-span-2 border-t border-slate-800 pt-3 text-xs text-slate-500">Ultimo utilizzo: {{ \Carbon\CarbonImmutable::parse($integration->usage_last_occurred_at)->format('d/m/Y H:i') }}</div>
+                            @endif
+                        </dl>
 
                         <div class="mt-6 flex flex-wrap gap-2 border-t border-slate-800 pt-5">
                             <a href="{{ route('settings.ai.edit', $integration) }}" class="inline-flex rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-200 no-underline hover:bg-slate-800">Modifica</a>
