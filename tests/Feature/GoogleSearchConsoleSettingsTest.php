@@ -1,0 +1,110 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\GoogleSearchConsoleConnection;
+use App\Models\IntegrationSetting;
+use App\Models\Site;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Tests\TestCase;
+
+class GoogleSearchConsoleSettingsTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_only_administrators_can_open_search_console_settings(): void
+    {
+        $user = User::factory()->create(['is_admin' => false]);
+
+        $this->get(route('settings.google-search-console.edit'))
+            ->assertRedirect(route('login'));
+
+        $this->actingAs($user)
+            ->get(route('settings.google-search-console.edit'))
+            ->assertForbidden();
+
+        $admin = User::factory()->administrator()->create();
+        $this->configureDatabaseCredentials();
+
+        $this->actingAs($admin)
+            ->get(route('settings.google-search-console.edit'))
+            ->assertOk()
+            ->assertSee('Google Search Console')
+            ->assertSee('Hai già configurato Google Analytics?')
+            ->assertSee('Google Search Console API')
+            ->assertSee('https://www.googleapis.com/auth/webmasters.readonly')
+            ->assertSee('https://dashboard.example.com/integrations/google-search-console/callback')
+            ->assertSee('Client ID')
+            ->assertSee('Client Secret')
+            ->assertDontSee('GOOGLE_SEARCH_CONSOLE_CLIENT_SECRET');
+    }
+
+    public function test_administrator_can_save_encrypted_search_console_credentials(): void
+    {
+        $this->configureDatabaseCredentials();
+
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
+
+        $this->actingAs($admin)
+            ->put(route('settings.google-search-console.update'), [
+                'client_id' => 'search-client.apps.googleusercontent.com',
+                'client_secret' => 'search-client-secret',
+                'return_site_id' => $site->id,
+            ])
+            ->assertRedirect(route('sites.edit', $site))
+            ->assertSessionHas('status', 'Credenziali Search Console salvate. Ora puoi collegare l’account Google.');
+
+        $setting = IntegrationSetting::query()->sole();
+
+        $this->assertSame(IntegrationSetting::GOOGLE_SEARCH_CONSOLE, $setting->provider);
+        $this->assertSame('search-client.apps.googleusercontent.com', $setting->configuration['client_id']);
+        $this->assertSame('search-client-secret', $setting->configuration['client_secret']);
+
+        $storedConfiguration = (string) DB::table('integration_settings')->value('configuration');
+
+        $this->assertStringNotContainsString('search-client.apps.googleusercontent.com', $storedConfiguration);
+        $this->assertStringNotContainsString('search-client-secret', $storedConfiguration);
+    }
+
+    public function test_client_id_change_is_blocked_while_search_console_connections_exist(): void
+    {
+        $this->configureDatabaseCredentials();
+
+        $admin = User::factory()->administrator()->create();
+        $setting = IntegrationSetting::query()->create([
+            'provider' => IntegrationSetting::GOOGLE_SEARCH_CONSOLE,
+            'configuration' => [
+                'client_id' => 'saved-client.apps.googleusercontent.com',
+                'client_secret' => 'saved-secret',
+            ],
+            'configured_by_user_id' => $admin->id,
+            'status' => 'configured',
+        ]);
+        GoogleSearchConsoleConnection::query()->create([
+            'authorized_by_user_id' => $admin->id,
+            'access_token' => 'access-token',
+            'refresh_token' => 'refresh-token',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin)
+            ->put(route('settings.google-search-console.update'), [
+                'client_id' => 'different-client.apps.googleusercontent.com',
+                'client_secret' => 'replacement-secret',
+            ])
+            ->assertSessionHasErrors('client_id');
+
+        $this->assertSame('saved-client.apps.googleusercontent.com', $setting->fresh()->configuration['client_id']);
+    }
+
+    private function configureDatabaseCredentials(): void
+    {
+        config()->set('services.google_search_console.client_id');
+        config()->set('services.google_search_console.client_secret');
+        config()->set('services.google_search_console.redirect_uri', 'https://dashboard.example.com/integrations/google-search-console/callback');
+        config()->set('services.google_search_console.scope', 'https://www.googleapis.com/auth/webmasters.readonly');
+    }
+}

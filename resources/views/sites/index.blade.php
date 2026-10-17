@@ -58,7 +58,13 @@
                                     <p class="text-sm font-medium text-amber-300">Google Analytics: configurazione precedente non verificata</p>
                                 @endif
                             @else
-                                <p class="text-sm text-slate-400">Nessun servizio collegato.</p>
+                                <p class="text-sm text-slate-400">Google Analytics non collegato.</p>
+                            @endif
+
+                            @if ($site->googleSearchConsoleProperty?->connection?->status === 'active')
+                                <p class="mt-2 text-sm font-medium text-emerald-300">Search Console collegata: {{ $site->googleSearchConsoleProperty->property_url }}</p>
+                            @else
+                                <p class="mt-2 text-sm text-slate-400">Google Search Console non collegata.</p>
                             @endif
                         </div>
                     </article>

@@ -25,3 +25,5 @@ Read `PROJECT_CONTEXT.md` before proposing or implementing changes. Inspect the 
 - Provide local commands, tests, and deployment considerations separately. Never run production operations without explicit user approval.
 - Keep infrastructure and hosting decisions configurable rather than hardcoded.
 - Do not add Docker, Redis, multiple runtimes or paid dependencies without a concrete need.
+- Never run PHPUnit with `--no-configuration`. Tests using `RefreshDatabase` must run only with `APP_ENV=testing`, `DB_CONNECTION=sqlite` and `DB_DATABASE=:memory:`; confirm the repository safety guard is active before executing them.
+- Never run `migrate:fresh`, destructive migrations or database-reset commands against a persistent local, staging or production database. Treat development data as persistent user data unless the user explicitly authorizes its deletion.

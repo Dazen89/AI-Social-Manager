@@ -23,6 +23,8 @@ class IntegrationSetting extends Model
 
     public const GOOGLE_ANALYTICS = 'google_analytics';
 
+    public const GOOGLE_SEARCH_CONSOLE = 'google_search_console';
+
     protected function casts(): array
     {
         return [

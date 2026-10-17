@@ -27,6 +27,11 @@ class Site extends Model
         return $this->hasOne(GoogleAnalyticsProperty::class);
     }
 
+    public function googleSearchConsoleProperty(): HasOne
+    {
+        return $this->hasOne(GoogleSearchConsoleProperty::class);
+    }
+
     public function analyticsInsightReports(): HasMany
     {
         return $this->hasMany(AnalyticsInsightReport::class);

@@ -4,9 +4,9 @@
         <ol class="mt-3 list-decimal space-y-2 pl-5 text-sm leading-6 text-slate-300">
             <li>Assicurati di possedere il sito o di essere autorizzato a consultarne i dati.</li>
             <li>Inserisci il nome e l’indirizzo principale del sito.</li>
-            <li>Salva per accedere alla pagina dei servizi disponibili, incluso Google Analytics.</li>
+            <li>Salva per accedere ai servizi disponibili, inclusi Google Analytics e Search Console.</li>
         </ol>
-        <p class="mt-3 text-sm leading-6 text-slate-400">In questa fase non servono account esterni, identificativi Analytics o credenziali.</p>
+        <p class="mt-3 text-sm leading-6 text-slate-400">In questa fase non servono account esterni, proprietà Google o credenziali.</p>
     </aside>
 @endunless
 

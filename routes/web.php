@@ -6,6 +6,8 @@ use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\GoogleAnalyticsConnectionController;
 use App\Http\Controllers\GoogleAnalyticsSettingsController;
+use App\Http\Controllers\GoogleSearchConsoleConnectionController;
+use App\Http\Controllers\GoogleSearchConsoleSettingsController;
 use App\Http\Controllers\SiteAnalyticsOverviewController;
 use App\Http\Controllers\SiteController;
 use Illuminate\Support\Facades\Route;
@@ -33,6 +35,13 @@ Route::middleware('auth')->group(function (): void {
             ->name('settings.google-analytics.update');
         Route::delete('/settings/integrations/google-analytics', [GoogleAnalyticsSettingsController::class, 'destroy'])
             ->name('settings.google-analytics.destroy');
+
+        Route::get('/settings/integrations/google-search-console', [GoogleSearchConsoleSettingsController::class, 'edit'])
+            ->name('settings.google-search-console.edit');
+        Route::put('/settings/integrations/google-search-console', [GoogleSearchConsoleSettingsController::class, 'update'])
+            ->name('settings.google-search-console.update');
+        Route::delete('/settings/integrations/google-search-console', [GoogleSearchConsoleSettingsController::class, 'destroy'])
+            ->name('settings.google-search-console.destroy');
 
         Route::get('/settings/integrations/ai', [AiIntegrationSettingsController::class, 'index'])
             ->name('settings.ai.index');
@@ -63,5 +72,18 @@ Route::middleware('auth')->group(function (): void {
             ->name('google-analytics.cancel');
         Route::delete('/sites/{site}/integrations/google-analytics', [GoogleAnalyticsConnectionController::class, 'destroy'])
             ->name('google-analytics.destroy');
+
+        Route::get('/sites/{site}/integrations/google-search-console/connect', [GoogleSearchConsoleConnectionController::class, 'connect'])
+            ->name('google-search-console.connect');
+        Route::get('/integrations/google-search-console/callback', [GoogleSearchConsoleConnectionController::class, 'callback'])
+            ->name('google-search-console.callback');
+        Route::get('/sites/{site}/integrations/google-search-console/properties', [GoogleSearchConsoleConnectionController::class, 'properties'])
+            ->name('google-search-console.properties');
+        Route::post('/sites/{site}/integrations/google-search-console', [GoogleSearchConsoleConnectionController::class, 'store'])
+            ->name('google-search-console.store');
+        Route::delete('/sites/{site}/integrations/google-search-console/pending', [GoogleSearchConsoleConnectionController::class, 'cancel'])
+            ->name('google-search-console.cancel');
+        Route::delete('/sites/{site}/integrations/google-search-console', [GoogleSearchConsoleConnectionController::class, 'destroy'])
+            ->name('google-search-console.destroy');
     });
 });

@@ -1,6 +1,6 @@
 # Monitoring Hub
 
-Dashboard Laravel privata per registrare siti posseduti o amministrati, collegare servizi di monitoraggio, configurare un fornitore AI e consultare dati verificati in un’unica interfaccia. Google Analytics 4, OpenAI e Anthropic sono le prime integrazioni disponibili.
+Dashboard Laravel privata per registrare siti posseduti o amministrati, collegare servizi di monitoraggio, configurare un fornitore AI e consultare dati verificati in un’unica interfaccia. Google Analytics 4, Google Search Console, OpenAI e Anthropic sono le prime integrazioni disponibili.
 
 ## Requisiti
 
@@ -97,6 +97,36 @@ Documentazione ufficiale:
 - [Elenco account e proprietà accessibili](https://developers.google.com/analytics/devguides/config/admin/v1/rest/v1beta/accountSummaries/list)
 - [Report multipli in una richiesta](https://developers.google.com/analytics/devguides/reporting/data/v1/rest/v1beta/properties/batchRunReports)
 
+## Collegamento Google Search Console
+
+Search Console è un’integrazione opzionale per sito. Usa OAuth 2.0 con il solo scope `webmasters.readonly`; credenziali, access token e refresh token vengono cifrati prima del salvataggio. Questa prima versione collega e verifica la proprietà: l’importazione di query, clic, impressioni, CTR e posizione media verrà aggiunta al livello di reporting in un incremento successivo.
+
+La procedura completa e i valori esatti da copiare sono disponibili in **Gestisci sito → Google Search Console → Configura Search Console**. In sintesi:
+
+1. verifica che l’account Google possa accedere al sito in [Google Search Console](https://search.google.com/search-console);
+2. abilita la **Google Search Console API** nel progetto Google Cloud;
+3. completa la configurazione di Google Auth Platform e, se l’app è in modalità Test, aggiungi l’account tra gli utenti di test;
+4. aggiungi lo scope `https://www.googleapis.com/auth/webmasters.readonly`;
+5. crea un client OAuth “Applicazione web”, oppure riutilizza quello di Analytics, e registra il callback esatto mostrato dalla dashboard;
+6. salva Client ID e Client Secret nella dashboard, autorizza l’account e scegli la proprietà proposta per il dominio.
+
+Se si riutilizza il client OAuth di Analytics, occorre aggiungere anche il callback Search Console senza rimuovere quello Analytics. La dashboard conserva separatamente proprietà e token, ma Google gestisce consenso e revoca a livello di progetto Cloud: revocare un collegamento può rendere necessaria una nuova autorizzazione anche per gli altri scope dello stesso progetto. Per un isolamento completo usa progetti Google Cloud distinti.
+
+Override opzionale per installazioni gestite tramite ambiente:
+
+```dotenv
+GOOGLE_SEARCH_CONSOLE_CLIENT_ID=
+GOOGLE_SEARCH_CONSOLE_CLIENT_SECRET=
+GOOGLE_SEARCH_CONSOLE_REDIRECT_URI="${APP_URL}/integrations/google-search-console/callback"
+```
+
+Documentazione ufficiale:
+
+- [Autorizzazione Search Console API](https://developers.google.com/webmaster-tools/v1/how-tos/authorizing)
+- [Elenco delle proprietà accessibili](https://developers.google.com/webmaster-tools/v1/sites/list)
+- [Search Analytics query](https://developers.google.com/webmaster-tools/v1/searchanalytics/query)
+- [Quote e limiti](https://developers.google.com/webmaster-tools/limits)
+
 ## Integrazione AI
 
 Dalla dashboard apri **Integrazioni AI** per vedere i collegamenti già configurati oppure crearne uno nuovo. Per ogni integrazione scegli il fornitore (OpenAI o Anthropic), il modello e inserisci una API key dedicata. La pagina di creazione contiene i collegamenti alle console e alle guide ufficiali per creare la chiave e scegliere un modello disponibile per il proprio account.
@@ -130,10 +160,10 @@ Documentazione ufficiale:
 
 1. Accedi come amministratore.
 2. Registra un sito indicando nome e dominio.
-3. Se richiesto, completa una sola volta la procedura in **Impostazioni → Google Analytics**.
+3. Se richiesto, completa una sola volta le procedure guidate Google Analytics e/o Google Search Console.
 4. Apri **Gestisci → Servizi e integrazioni**.
 5. Seleziona **Collega account Google** e autorizza l’accesso in sola lettura.
-6. Scegli una proprietà dall’elenco verificato restituito da Google.
+6. Scegli per ogni servizio una proprietà dall’elenco verificato restituito da Google.
 7. Torna a **Siti** e apri la panoramica del sito per consultare i report degli ultimi 7, 28 o 90 giorni e, facoltativamente, generarne l’analisi AI.
 
 Se esiste uno stream web con lo stesso dominio del sito, l’applicazione salva automaticamente anche Data Stream ID e Measurement ID. In caso contrario la proprietà resta collegata e viene mostrato un avviso esplicito. La panoramica interroga la Data API su richiesta, filtra i report per l’hostname registrato e conserva la risposta in cache per dieci minuti per ridurre latenza e consumo di quota.
@@ -146,7 +176,7 @@ vendor/bin/pint --test
 php artisan view:cache
 ```
 
-I test usano risposte HTTP simulate: non effettuano autorizzazioni reali, non modificano dati Google Analytics e non consumano API AI.
+I test usano risposte HTTP simulate: non effettuano autorizzazioni reali, non modificano dati Google Analytics o Search Console e non consumano API AI. La suite accetta esclusivamente `APP_ENV=testing` con SQLite `:memory:`; `tests/TestCase.php` interrompe l’avvio prima di `RefreshDatabase` se rileva qualsiasi database persistente. `phpunit.xml` forza inoltre questi valori e usa un percorso di cache della configurazione dedicato ai test.
 
 ## Sicurezza
 

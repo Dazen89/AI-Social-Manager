@@ -1,6 +1,6 @@
 # Monitoring Hub — Public project context
 
-_Status: authentication, the site registry, the Google Analytics OAuth connection flow, the site-level analytics overview, AI provider configuration and on-demand AI analytics insights are implemented. Features not marked implemented are planned._
+_Status: authentication, the site registry, Google Analytics and Google Search Console OAuth connection flows, the site-level analytics overview, AI provider configuration and on-demand AI analytics insights are implemented. Features not marked implemented are planned._
 
 ## Purpose
 Monitoring Hub is a private, reusable dashboard for small teams that need to centralize the services used to monitor websites they own or are explicitly authorized to manage.
@@ -20,23 +20,25 @@ The dashboard may run on a different subdomain from the monitored website. It mu
 2. **Site registry — implemented:** administrators first register owned sites using a canonical base URL and manage whether monitoring is active.
 3. **Service selection — implemented foundation:** after creating a site, administrators manage it from a dedicated page and review the optional services available for connection. Provider-specific fields do not belong in the initial site form.
 4. **Google Analytics connection — implemented:** guided installation-level OAuth credential setup, read-only OAuth flow, encrypted credential and token storage, token refresh, account/property discovery, explicit server-verified property selection, matching web-stream discovery, disconnect/revocation and clear connection health. Manual provider identifiers are not the primary setup path.
-5. **Page catalog — planned:** import canonical pages from an approved sitemap or read-only source connector, normalize URLs and prevent duplicates. Analytics rows are metrics, not the canonical source of website pages.
-6. **Measurement — implemented foundation:** query Google Analytics Data API on demand through one batched request, filter by the registered hostname, cache responses for ten minutes and expose unavailable or delayed metrics explicitly. Scheduled snapshots and historical persistence remain planned.
-7. **Site-focused dashboard — implemented foundation:** each connected site has a 7/28/90-day overview with traffic totals, a same-length previous-period comparison, daily sessions, pages, acquisition channels, devices and countries. Richer page drill-down and provider sync history remain planned.
-8. **AI provider integration — implemented:** administrators can configure multiple OpenAI or Anthropic connections, choose a supported model, save each API key encrypted at rest and switch the single active integration. The verified active integration can generate an on-demand structured interpretation of aggregate GA4 data with evidence, priorities, actions, cautions and explicit limitations. Reports and source snapshots are encrypted; query strings are removed before AI submission. Per-request token usage is recorded without storing prompts in usage logs. Exact provider billing is not inferred from tokens; OpenAI's organization Costs API requires a separate privileged Admin API key.
-9. **Additional adapters — future:** other analytics, monitoring, content and social services may be introduced behind configurable contracts without coupling the core domain to one provider.
+5. **Google Search Console connection — implemented:** optional guided OAuth setup with the read-only `webmasters.readonly` scope, encrypted credentials and tokens, accessible-property discovery, hostname-aware suggestions, explicit property selection, token refresh, disconnect/revocation and clear site-level status. Search Analytics reporting remains planned.
+6. **Page catalog — planned:** import canonical pages from an approved sitemap or read-only source connector, normalize URLs and prevent duplicates. Analytics rows are metrics, not the canonical source of website pages.
+7. **Measurement — implemented foundation:** query Google Analytics Data API on demand through one batched request, filter by the registered hostname, cache responses for ten minutes and expose unavailable or delayed metrics explicitly. Scheduled snapshots, Search Console Search Analytics reports and historical persistence remain planned.
+8. **Site-focused dashboard — implemented foundation:** each connected site has a 7/28/90-day overview with traffic totals, a same-length previous-period comparison, daily sessions, pages, acquisition channels, devices and countries. Richer page drill-down and provider sync history remain planned.
+9. **AI provider integration — implemented:** administrators can configure multiple OpenAI or Anthropic connections, choose a supported model, save each API key encrypted at rest and switch the single active integration. The verified active integration can generate an on-demand structured interpretation of aggregate GA4 data with evidence, priorities, actions, cautions and explicit limitations. Reports and source snapshots are encrypted; query strings are removed before AI submission. Per-request token usage is recorded without storing prompts in usage logs. Exact provider billing is not inferred from tokens; OpenAI's organization Costs API requires a separate privileged Admin API key.
+10. **Additional adapters — future:** other analytics, monitoring, content and social services may be introduced behind configurable contracts without coupling the core domain to one provider.
 
 ## Domain principles
 - A site is shared within the single private administrative workspace; this project does not introduce multi-tenancy prematurely.
 - The setup experience must be self-explanatory for third-party installations: every provider field should state whether it is required, what it identifies, where to find it and whether it contains a secret. Link to official provider documentation where useful and never assume prior analytics expertise.
 - Provider identities and OAuth connections are separate from the sites and properties they can access, so one authorized connection may serve multiple owned sites.
 - A Google Analytics account can expose multiple GA4 properties and data streams. Reports are queried by property, while host and page dimensions are used to associate metrics with canonical site pages.
+- Search Console properties may identify an entire domain (`sc-domain:`) or one URL prefix. Keep their identifiers separate from GA4 properties and require the administrator to confirm the suggested match.
 - Store provider identifiers separately from credentials. Installation administrators may save OAuth application credentials through the dashboard; secrets and refresh tokens must be encrypted at rest. Environment variables remain an optional advanced override and take precedence when configured.
 - Prefer on-demand cached reports first, then add scheduled snapshots where trend history, quota control or performance requires them.
 
 ## Safeguards
 - Only register sites that the operator owns or is explicitly authorized to monitor.
-- Request the narrowest provider scopes possible; Google Analytics integration starts read-only.
+- Request the narrowest provider scopes possible; Google Analytics and Search Console integrations are read-only.
 - Validate OAuth state, protect callback routes, encrypt tokens, support revocation and never expose credentials or tokens in logs, URLs, views or test fixtures.
 - Treat analytics and page metadata as potentially sensitive. Do not collect unnecessary personal data and do not present unavailable metrics as zero.
 - Respect provider quotas, retry guidance and reporting limitations. Use bounded retries, backoff, caching and controlled background jobs.
@@ -49,15 +51,17 @@ The dashboard may run on a different subdomain from the monitored website. It mu
 
 **C. Google Analytics OAuth — implemented:** guided Google Cloud application setup, encrypted installation credentials with an optional environment override, read-only authorization, encrypted token lifecycle, account/property discovery, verified metadata and disconnect flow.
 
-**D. Page catalog:** sitemap or source connector, canonical URL normalization, sync history and deduplication.
+**D. Google Search Console OAuth — implemented:** guided Google Cloud and Search Console setup, optional reuse of an OAuth client, encrypted installation credentials with an optional environment override, read-only authorization, accessible-property discovery, verified selection and disconnect flow.
 
-**E. Analytics reports — implemented foundation:** site and page metrics, hostname filtering, bounded retries and short-lived cache. Quota telemetry and optional persistent snapshots remain planned.
+**E. Page catalog:** sitemap or source connector, canonical URL normalization, sync history and deduplication.
 
-**F. Monitoring dashboard — implemented foundation:** date ranges, same-length period comparison, a useful site overview and on-demand AI interpretation. Detailed sync health and page views remain planned.
+**F. Analytics reports — implemented foundation:** site and page metrics, hostname filtering, bounded retries and short-lived cache. Search Console Search Analytics queries, combined reporting, quota telemetry and optional persistent snapshots remain planned.
 
-**G. AI integration — implemented foundation:** installation-level provider, model and encrypted API-key settings, multi-connection summary with one active integration, official setup guidance, structured analytics insights and token-usage telemetry. Monetary budget enforcement, content-generation workflows and approvals remain planned.
+**G. Monitoring dashboard — implemented foundation:** date ranges, same-length period comparison, a useful site overview and on-demand AI interpretation. Detailed sync health and page views remain planned.
 
-**H. Additional services:** introduce new providers only when there is a concrete use case and keep them optional.
+**H. AI integration — implemented foundation:** installation-level provider, model and encrypted API-key settings, multi-connection summary with one active integration, official setup guidance, structured analytics insights and token-usage telemetry. Monetary budget enforcement, combined GA4/Search Console interpretation, content-generation workflows and approvals remain planned.
+
+**I. Additional services:** introduce new providers only when there is a concrete use case and keep them optional.
 
 ## Development rules
 - Never commit secrets, local data files, dumps or installation-specific documentation.

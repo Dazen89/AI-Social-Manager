@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\SaveSiteRequest;
 use App\Models\Site;
 use App\Services\GoogleAnalyticsService;
+use App\Services\GoogleSearchConsoleService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Arr;
 use Illuminate\View\View;
@@ -15,7 +16,10 @@ class SiteController extends Controller
     {
         return view('sites.index', [
             'sites' => Site::query()
-                ->with('googleAnalyticsProperty.connection')
+                ->with([
+                    'googleAnalyticsProperty.connection',
+                    'googleSearchConsoleProperty.connection',
+                ])
                 ->orderBy('name')
                 ->paginate(12),
         ]);
@@ -42,11 +46,18 @@ class SiteController extends Controller
             ->with('status', 'Sito aggiunto. Ora puoi scegliere quali servizi collegare.');
     }
 
-    public function edit(Site $site, GoogleAnalyticsService $analytics): View
-    {
+    public function edit(
+        Site $site,
+        GoogleAnalyticsService $analytics,
+        GoogleSearchConsoleService $searchConsole,
+    ): View {
         return view('sites.edit', [
-            'site' => $site->load('googleAnalyticsProperty.connection'),
+            'site' => $site->load([
+                'googleAnalyticsProperty.connection',
+                'googleSearchConsoleProperty.connection',
+            ]),
             'googleAnalyticsOAuthConfigured' => $analytics->credentialsAreConfigured(),
+            'googleSearchConsoleOAuthConfigured' => $searchConsole->credentialsAreConfigured(),
         ]);
     }
 

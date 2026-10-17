@@ -117,6 +117,70 @@
                     </div>
                 @endunless
             </article>
+
+            <article class="mt-6 rounded-2xl border border-slate-700 bg-slate-950/50 p-6">
+                @php
+                    $searchConsoleProperty = $site->googleSearchConsoleProperty;
+                    $searchConsoleConnection = $searchConsoleProperty?->connection;
+                    $searchConsoleIsConnected = $searchConsoleConnection?->status === 'active';
+                @endphp
+
+                <div class="flex flex-wrap items-start justify-between gap-5">
+                    <div class="max-w-2xl">
+                        <div class="flex flex-wrap items-center gap-3">
+                            <h3 class="text-lg font-semibold">Google Search Console</h3>
+                            @if ($searchConsoleIsConnected)
+                                <span class="rounded-full bg-emerald-400/10 px-2.5 py-1 text-xs font-medium text-emerald-300">Collegata</span>
+                            @else
+                                <span class="rounded-full bg-slate-700 px-2.5 py-1 text-xs font-medium text-slate-300">Non collegata</span>
+                            @endif
+                        </div>
+
+                        <p class="mt-3 text-sm leading-6 text-slate-400">Aggiunge query, impressioni, clic, CTR e posizione media nei risultati Google. Il collegamento usa soltanto il permesso Search Console di lettura e non può modificare il sito.</p>
+
+                        @if ($searchConsoleIsConnected)
+                            <dl class="mt-4 grid gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-sm sm:grid-cols-2">
+                                <div class="sm:col-span-2">
+                                    <dt class="text-slate-500">Proprietà</dt>
+                                    <dd class="mt-1 break-all font-medium text-slate-200">{{ $searchConsoleProperty->property_url }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-slate-500">Tipo</dt>
+                                    <dd class="mt-1 font-medium text-slate-200">{{ $searchConsoleProperty->property_type === 'domain' ? 'Dominio' : 'Prefisso URL' }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-slate-500">Ultima verifica</dt>
+                                    <dd class="mt-1 font-medium text-slate-200">{{ $searchConsoleProperty->last_verified_at?->format('d/m/Y H:i') }}</dd>
+                                </div>
+                            </dl>
+                        @endif
+                    </div>
+
+                    <div class="flex min-w-56 flex-col items-stretch gap-3">
+                        @if ($googleSearchConsoleOAuthConfigured)
+                            <a href="{{ route('google-search-console.connect', $site) }}" class="rounded-xl bg-sky-500 px-5 py-3 text-center font-semibold text-slate-950 no-underline hover:bg-sky-400">{{ $searchConsoleIsConnected ? 'Cambia account o proprietà' : 'Collega Search Console' }}</a>
+                        @else
+                            <a href="{{ route('settings.google-search-console.edit', ['site' => $site->id]) }}" class="rounded-xl bg-amber-400 px-5 py-3 text-center font-semibold text-slate-950 no-underline hover:bg-amber-300">Configura Search Console</a>
+                        @endif
+
+                        @if ($searchConsoleProperty)
+                            <form method="POST" action="{{ route('google-search-console.destroy', $site) }}" onsubmit="return confirm('Vuoi scollegare Google Search Console da questo sito?');">
+                                @csrf
+                                @method('DELETE')
+                                <button type="submit" class="w-full border border-rose-500/30 bg-transparent text-rose-300 hover:bg-rose-500/10">Scollega</button>
+                            </form>
+                        @endif
+                    </div>
+                </div>
+
+                @unless ($googleSearchConsoleOAuthConfigured)
+                    <div class="mt-6 rounded-xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm leading-6 text-amber-100">
+                        <p class="font-semibold">Prima abilita l’accesso Search Console dell’installazione</p>
+                        <p class="mt-2">La guida mostra come verificare il sito in Search Console, abilitare l’API, aggiungere il permesso di sola lettura e configurare il callback. Se hai già Google Analytics, puoi riutilizzare lo stesso progetto e client OAuth.</p>
+                        <a href="{{ route('settings.google-search-console.edit', ['site' => $site->id]) }}" class="mt-3 inline-flex font-medium text-amber-200 underline underline-offset-4">Apri la procedura guidata</a>
+                    </div>
+                @endunless
+            </article>
         </section>
     </main>
 @endsection
