@@ -182,5 +182,11 @@
                 @endunless
             </article>
         </section>
+
+        <section class="mt-8 rounded-3xl border border-slate-800 bg-slate-900 p-8" aria-labelledby="editorial-plan-heading">
+            <h2 id="editorial-plan-heading" class="text-xl font-semibold">Piano editoriale</h2>
+            <p class="mt-2 text-sm leading-6 text-slate-400">Aggiungi la fonte da cui Monitor potrà recuperare le uscite. Per ora puoi configurare FoOlSlide-Improved; importazione, calendario e post su X non sono ancora attivi.</p>
+            <a href="{{ route('sites.editorial-plan.show', $site) }}" class="mt-5 inline-flex rounded-xl bg-sky-500 px-5 py-3 font-semibold text-slate-950 no-underline hover:bg-sky-400">Configura piano editoriale</a>
+        </section>
     </main>
 @endsection

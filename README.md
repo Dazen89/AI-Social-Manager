@@ -1,6 +1,6 @@
 # Monitoring Hub
 
-Dashboard Laravel privata per registrare siti posseduti o amministrati, collegare servizi di monitoraggio, configurare un fornitore AI e consultare dati verificati in un’unica interfaccia. Google Analytics 4, Google Search Console, OpenAI e Anthropic sono le prime integrazioni disponibili.
+Dashboard Laravel privata per registrare siti posseduti o amministrati, collegare servizi di monitoraggio, configurare un fornitore AI e preparare la pubblicazione social da un’unica interfaccia. Google Analytics 4, Google Search Console, OpenAI, Anthropic e X sono le prime integrazioni disponibili.
 
 ## Requisiti
 
@@ -155,6 +155,42 @@ Documentazione ufficiale:
 - [Costs API OpenAI](https://developers.openai.com/api/reference/resources/admin/subresources/organization/subresources/usage/methods/costs)
 - [Creare una API key Claude](https://platform.claude.com/docs/en/get-api-key)
 - [Modelli Claude](https://platform.claude.com/docs/en/models/overview)
+
+## Collegamento dell’account X
+
+La pagina **Social** guida un amministratore nella configurazione di un’app X e nel collegamento dell’unico account che pubblicherà per questa installazione. Il flusso usa OAuth 2.0 Authorization Code con PKCE e richiede soltanto `tweet.read`, `tweet.write`, `users.read` e `offline.access`. Client Secret, access token e refresh token sono cifrati nel database; password, email e messaggi privati dell’account non vengono richiesti.
+
+Per configurare il collegamento:
+
+1. completa il **Developer Agreement & Policy** descrivendo nel campo “Describe all of your use cases of X’s data and API” gli usi reali e previsti dell’installazione; la pagina **Social** fornisce un testo di esempio da adattare, non una dichiarazione da inviare senza verifica;
+2. crea un progetto e un’app nel [Developer Console di X](https://developer.x.com/en/portal/dashboard) con un piano che includa la creazione di post;
+3. in **User authentication settings** abilita OAuth 2.0 e scegli **Web App, Automated App or Bot**;
+4. abilita i permessi **Read and write**;
+5. registra come Callback URI l’indirizzo esatto mostrato nella pagina **Social**;
+6. recupera dalla Developer Console il **Client ID** e il **Client Secret** OAuth 2.0 e copiali nella dashboard. Non usare API Key, API Key Secret o Bearer Token;
+7. salva, usa **Collega account X**, accedi all’account corretto e conferma i permessi: l’app legge `/2/users/me` per mostrare e verificare l’account scelto.
+
+La Developer Console è quindi la fonte per approvazione del caso d’uso, piano e quote, progetto/app, Client ID, Client Secret, permessi e stato dell’app. Monitoring Hub fornisce invece il Callback URI e l’elenco degli scope da registrare; l’identità dell’account di pubblicazione viene recuperata direttamente da X dopo il consenso.
+
+Per installazioni gestite da personale tecnico sono disponibili override opzionali tramite ambiente:
+
+```dotenv
+X_CLIENT_ID=
+X_CLIENT_SECRET=
+X_REDIRECT_URI="${APP_URL}/integrations/x/callback"
+```
+
+Le variabili d’ambiente hanno precedenza sulla configurazione cifrata della dashboard. Il callback deve coincidere esattamente con quello registrato presso X. Lo scollegamento prova a revocare il token presso X e rimuove sempre la copia locale; se la revoca remota non riesce, la dashboard invita a rimuovere l’app anche dalle impostazioni di sicurezza dell’account.
+
+Questa integrazione prepara l’autorizzazione di pubblicazione ma non invia post durante il setup. Editor, approvazione dei contenuti, pianificazione, job idempotenti e storico delle consegne verranno aggiunti separatamente prima di abilitare scritture automatiche reali.
+
+Documentazione ufficiale:
+
+- [OAuth 2.0 Authorization Code con PKCE](https://docs.x.com/fundamentals/authentication/oauth-2-0/authorization-code)
+- [Creazione di post con X API](https://docs.x.com/x-api/posts/create-post)
+- [Panoramica dell’autenticazione OAuth 2.0](https://docs.x.com/fundamentals/authentication/oauth-2-0/overview)
+- [Developer Agreement](https://docs.x.com/developer-terms/agreement)
+- [Developer Policy](https://docs.x.com/developer-terms/policy)
 
 ## Flusso utente
 

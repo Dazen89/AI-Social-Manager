@@ -10,6 +10,9 @@ use App\Http\Controllers\GoogleSearchConsoleConnectionController;
 use App\Http\Controllers\GoogleSearchConsoleSettingsController;
 use App\Http\Controllers\SiteAnalyticsOverviewController;
 use App\Http\Controllers\SiteController;
+use App\Http\Controllers\SiteEditorialPlanController;
+use App\Http\Controllers\XConnectionController;
+use App\Http\Controllers\XSettingsController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/dashboard');
@@ -26,6 +29,10 @@ Route::middleware('auth')->group(function (): void {
         Route::get('/dashboard', DashboardController::class)->name('dashboard');
         Route::resource('sites', SiteController::class)->only(['index', 'create', 'store', 'edit', 'update']);
         Route::get('/sites/{site}', SiteAnalyticsOverviewController::class)->name('sites.show');
+        Route::get('/sites/{site}/editorial-plan', [SiteEditorialPlanController::class, 'show'])->name('sites.editorial-plan.show');
+        Route::post('/sites/{site}/editorial-plan/sources', [SiteEditorialPlanController::class, 'store'])->name('sites.editorial-plan.sources.store');
+        Route::put('/sites/{site}/editorial-plan/sources/{source}', [SiteEditorialPlanController::class, 'update'])->name('sites.editorial-plan.sources.update');
+        Route::patch('/sites/{site}/editorial-plan/sources/{source}/toggle', [SiteEditorialPlanController::class, 'toggle'])->name('sites.editorial-plan.sources.toggle');
         Route::post('/sites/{site}/analytics/insights', [AnalyticsInsightController::class, 'store'])
             ->name('sites.analytics-insights.store');
 
@@ -59,6 +66,19 @@ Route::middleware('auth')->group(function (): void {
             ->name('settings.ai.verify');
         Route::delete('/settings/integrations/ai/{aiIntegration}', [AiIntegrationSettingsController::class, 'destroy'])
             ->name('settings.ai.destroy');
+
+        Route::get('/settings/integrations/x', [XSettingsController::class, 'edit'])
+            ->name('settings.x.edit');
+        Route::put('/settings/integrations/x', [XSettingsController::class, 'update'])
+            ->name('settings.x.update');
+        Route::delete('/settings/integrations/x', [XSettingsController::class, 'destroy'])
+            ->name('settings.x.destroy');
+        Route::get('/integrations/x/connect', [XConnectionController::class, 'connect'])
+            ->name('x.connect');
+        Route::get('/integrations/x/callback', [XConnectionController::class, 'callback'])
+            ->name('x.callback');
+        Route::delete('/integrations/x', [XConnectionController::class, 'destroy'])
+            ->name('x.destroy');
 
         Route::get('/sites/{site}/integrations/google-analytics/connect', [GoogleAnalyticsConnectionController::class, 'connect'])
             ->name('google-analytics.connect');

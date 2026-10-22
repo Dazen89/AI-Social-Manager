@@ -10,6 +10,7 @@
                 <a href="{{ route('dashboard') }}" class="rounded-lg px-3 py-2 text-sm no-underline {{ request()->routeIs('dashboard') ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white' }}">Dashboard</a>
                 <a href="{{ route('sites.index') }}" class="rounded-lg px-3 py-2 text-sm no-underline {{ request()->routeIs('sites.*') ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white' }}">Siti</a>
                 <a href="{{ route('settings.ai.index') }}" class="rounded-lg px-3 py-2 text-sm no-underline {{ request()->routeIs('settings.ai.*') ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white' }}">Integrazioni AI</a>
+                <a href="{{ route('settings.x.edit') }}" class="rounded-lg px-3 py-2 text-sm no-underline {{ request()->routeIs('settings.x.*') || request()->routeIs('x.*') ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white' }}">Social</a>
                 <a href="{{ route('settings.google-analytics.edit') }}" class="rounded-lg px-3 py-2 text-sm no-underline {{ request()->routeIs('settings.google-analytics.*') ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white' }}">Impostazioni</a>
             </nav>
         </div>

@@ -1,6 +1,6 @@
 # Monitoring Hub — Public project context
 
-_Status: authentication, the site registry, Google Analytics and Google Search Console OAuth connection flows, the site-level analytics overview, AI provider configuration and on-demand AI analytics insights are implemented. Features not marked implemented are planned._
+_Status: authentication, the site registry, Google Analytics and Google Search Console OAuth connection flows, the site-level analytics overview, AI provider configuration, on-demand AI analytics insights and the X OAuth publishing connection are implemented. Features not marked implemented are planned._
 
 ## Purpose
 Monitoring Hub is a private, reusable dashboard for small teams that need to centralize the services used to monitor websites they own or are explicitly authorized to manage.
@@ -26,6 +26,8 @@ The dashboard may run on a different subdomain from the monitored website. It mu
 8. **Site-focused dashboard — implemented foundation:** each connected site has a 7/28/90-day overview with traffic totals, a same-length previous-period comparison, daily sessions, pages, acquisition channels, devices and countries. Richer page drill-down and provider sync history remain planned.
 9. **AI provider integration — implemented:** administrators can configure multiple OpenAI or Anthropic connections, choose a supported model, save each API key encrypted at rest and switch the single active integration. The verified active integration can generate an on-demand structured interpretation of aggregate GA4 data with evidence, priorities, actions, cautions and explicit limitations. Reports and source snapshots are encrypted; query strings are removed before AI submission. Per-request token usage is recorded without storing prompts in usage logs. Exact provider billing is not inferred from tokens; OpenAI's organization Costs API requires a separate privileged Admin API key.
 10. **Additional adapters — future:** other analytics, monitoring, content and social services may be introduced behind configurable contracts without coupling the core domain to one provider.
+11. **Social publishing connection — implemented foundation:** administrators can configure one X OAuth 2.0 confidential client, authorize and verify the installation's publishing account with PKCE, and disconnect/revoke access. Credentials and user tokens are encrypted. The post editor, approval policy, scheduling queue, idempotent publishing and delivery history remain planned.
+12. **Editorial source configuration — implemented foundation:** each site has a protected editorial-plan page where administrators can register and deactivate FoOlSlide-Improved source installations on that site's host. This stores configuration only; content import, eligibility checks, scheduling and publishing remain planned. The FoOlSlide reader API exposes chapter listing but does not explicitly filter hidden chapters, so a future importer must enforce visibility and content-approval rules.
 
 ## Domain principles
 - A site is shared within the single private administrative workspace; this project does not introduce multi-tenancy prematurely.
@@ -62,6 +64,8 @@ The dashboard may run on a different subdomain from the monitored website. It mu
 **H. AI integration — implemented foundation:** installation-level provider, model and encrypted API-key settings, multi-connection summary with one active integration, official setup guidance, structured analytics insights and token-usage telemetry. Monetary budget enforcement, combined GA4/Search Console interpretation, content-generation workflows and approvals remain planned.
 
 **I. Additional services:** introduce new providers only when there is a concrete use case and keep them optional.
+
+**J. Social publishing — implemented connection foundation:** guided X Developer setup, encrypted installation credentials, OAuth 2.0 PKCE account authorization with the minimum publishing scopes, verified account identity and revocation. Content eligibility, approvals, scheduling, queued delivery and post-level metrics remain planned.
 
 ## Development rules
 - Never commit secrets, local data files, dumps or installation-specific documentation.

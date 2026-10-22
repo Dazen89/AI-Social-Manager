@@ -36,4 +36,9 @@ class Site extends Model
     {
         return $this->hasMany(AnalyticsInsightReport::class);
     }
+
+    public function editorialSources(): HasMany
+    {
+        return $this->hasMany(EditorialSource::class);
+    }
 }

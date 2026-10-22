@@ -35,7 +35,10 @@
                 </div>
             </div>
 
-            <a href="{{ route('sites.edit', $site) }}" class="rounded-xl border border-slate-700 px-5 py-3 text-sm font-semibold text-slate-200 no-underline hover:border-slate-500 hover:bg-slate-900">Gestisci sito e collegamenti</a>
+            <div class="flex flex-wrap gap-3">
+                <a href="{{ route('sites.editorial-plan.show', $site) }}" class="rounded-xl border border-sky-500/50 px-5 py-3 text-sm font-semibold text-sky-300 no-underline hover:bg-slate-900">Piano editoriale</a>
+                <a href="{{ route('sites.edit', $site) }}" class="rounded-xl border border-slate-700 px-5 py-3 text-sm font-semibold text-slate-200 no-underline hover:border-slate-500 hover:bg-slate-900">Gestisci sito e collegamenti</a>
+            </div>
         </div>
 
         @unless ($analyticsIsConnected)

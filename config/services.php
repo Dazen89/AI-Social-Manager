@@ -49,4 +49,11 @@ return [
         'scope' => 'https://www.googleapis.com/auth/webmasters.readonly',
     ],
 
+    'x' => [
+        'client_id' => env('X_CLIENT_ID'),
+        'client_secret' => env('X_CLIENT_SECRET'),
+        'redirect_uri' => env('X_REDIRECT_URI'),
+        'scopes' => ['tweet.read', 'tweet.write', 'users.read', 'offline.access'],
+    ],
+
 ];

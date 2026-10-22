@@ -25,6 +25,8 @@ class IntegrationSetting extends Model
 
     public const GOOGLE_SEARCH_CONSOLE = 'google_search_console';
 
+    public const X = 'x';
+
     protected function casts(): array
     {
         return [
