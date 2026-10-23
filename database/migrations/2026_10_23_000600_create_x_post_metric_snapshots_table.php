@@ -12,7 +12,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('editorial_proposal_id')->constrained()->cascadeOnDelete();
             $table->longText('metrics');
-            $table->timestamp('collected_at');
+            $table->timestamp('collected_at')->useCurrent();
             $table->timestamps();
             $table->index(['editorial_proposal_id', 'collected_at'], 'x_post_metrics_proposal_collected');
         });

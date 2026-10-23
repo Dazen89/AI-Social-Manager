@@ -19,7 +19,7 @@ return new class extends Migration
             $table->timestamp('released_at')->nullable();
             $table->string('eligibility_status', 20)->default('pending');
             $table->foreignId('eligibility_confirmed_by_user_id')->nullable()->constrained('users')->nullOnDelete();
-            $table->timestamp('last_seen_at');
+            $table->timestamp('last_seen_at')->useCurrent();
             $table->timestamps();
 
             $table->unique(['editorial_source_id', 'external_id'], 'editorial_content_source_external_unique');

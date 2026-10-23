@@ -16,7 +16,7 @@ return new class extends Migration
             $table->string('confidence', 8);
             $table->text('rationale');
             $table->longText('source_snapshot');
-            $table->timestamp('generated_at');
+            $table->timestamp('generated_at')->useCurrent();
             $table->timestamps();
             $table->index(['site_id', 'generated_at']);
         });
