@@ -1,21 +1,26 @@
 @extends('layouts.app')
 
-@section('title', 'Piano editoriale — '.$site->name.' — '.config('app.name', 'Monitoring Hub'))
+@section('title', 'Fonti editoriali — '.$site->name.' — '.config('app.name', 'Monitoring Hub'))
 
 @section('content')
     @include('partials.navigation')
 
     <main class="mx-auto max-w-5xl px-6 py-10">
-        <a href="{{ route('sites.show', $site) }}" class="text-sm text-sky-400">← Torna alla panoramica</a>
+        <a href="{{ route('sites.editorial-plan.show', $site) }}" class="text-sm text-sky-400">← Torna al piano editoriale</a>
 
         <div class="mt-4 flex flex-wrap items-start justify-between gap-4">
             <div>
                 <p class="text-sm font-semibold uppercase tracking-[0.2em] text-sky-400">{{ $site->name }}</p>
-                <h1 class="mt-2 text-3xl font-semibold">Piano editoriale</h1>
-                <p class="mt-3 max-w-2xl text-slate-400">Configura da dove Monitor potrà leggere le nuove uscite. La programmazione, il calendario e la pubblicazione su X arriveranno nei prossimi passaggi.</p>
+                <h1 class="mt-2 text-3xl font-semibold">Fonti editoriali</h1>
+                <p class="mt-3 max-w-2xl text-slate-400">Configura da dove Monitor potrà leggere le nuove uscite. La programmazione e la pubblicazione su X arriveranno nei prossimi passaggi.</p>
             </div>
             <span class="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-sm text-amber-200">Fonte e verifica API</span>
         </div>
+
+        <nav class="mt-8 flex gap-2 border-b border-slate-800 pb-3 text-sm" aria-label="Sezioni del piano editoriale">
+            <a href="{{ route('sites.editorial-plan.show', $site) }}" class="rounded-lg px-4 py-2 text-slate-300 no-underline hover:bg-slate-800">Calendario e proposte</a>
+            <a href="{{ route('sites.editorial-plan.sources.index', $site) }}" aria-current="page" class="rounded-lg bg-sky-500/15 px-4 py-2 font-semibold text-sky-300 no-underline">Fonti</a>
+        </nav>
 
         @if (session('status'))
             <div class="mt-7 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200" role="status">{{ session('status') }}</div>

@@ -97,7 +97,59 @@ class GoogleSearchConsoleSettingsTest extends TestCase
             ])
             ->assertSessionHasErrors('client_id');
 
+        $this->get(route('settings.google-search-console.edit'))
+            ->assertOk()
+            ->assertSee('scollega prima Search Console da tutti i siti')
+            ->assertDontSee('Rimuovi credenziali OAuth');
+
+        $this->delete(route('settings.google-search-console.destroy'))
+            ->assertSessionHas('integration_error');
+
         $this->assertSame('saved-client.apps.googleusercontent.com', $setting->fresh()->configuration['client_id']);
+    }
+
+    public function test_saved_credentials_can_be_reached_corrected_and_removed_before_connection(): void
+    {
+        $this->configureDatabaseCredentials();
+
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
+        $setting = IntegrationSetting::query()->create([
+            'provider' => IntegrationSetting::GOOGLE_SEARCH_CONSOLE,
+            'configuration' => [
+                'client_id' => 'wrong-client.apps.googleusercontent.com',
+                'client_secret' => 'wrong-secret',
+            ],
+            'configured_by_user_id' => $admin->id,
+            'status' => 'configured',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('sites.edit', $site))
+            ->assertOk()
+            ->assertSee('Collega Search Console')
+            ->assertSee('Modifica o rimuovi credenziali OAuth')
+            ->assertSee(route('settings.google-search-console.edit', ['site' => $site->id]));
+
+        $this->get(route('settings.google-search-console.edit', ['site' => $site->id]))
+            ->assertOk()
+            ->assertSee('wrong-client.apps.googleusercontent.com')
+            ->assertSee('Rimuovi credenziali OAuth')
+            ->assertDontSee('wrong-secret');
+
+        $this->put(route('settings.google-search-console.update'), [
+            'client_id' => 'correct-client.apps.googleusercontent.com',
+            'client_secret' => 'correct-secret',
+            'return_site_id' => $site->id,
+        ])->assertRedirect(route('sites.edit', $site));
+
+        $this->assertSame('correct-client.apps.googleusercontent.com', $setting->fresh()->configuration['client_id']);
+        $this->assertSame('correct-secret', $setting->fresh()->configuration['client_secret']);
+
+        $this->delete(route('settings.google-search-console.destroy'))
+            ->assertRedirect(route('settings.google-search-console.edit'));
+
+        $this->assertDatabaseMissing('integration_settings', ['provider' => IntegrationSetting::GOOGLE_SEARCH_CONSOLE]);
     }
 
     private function configureDatabaseCredentials(): void

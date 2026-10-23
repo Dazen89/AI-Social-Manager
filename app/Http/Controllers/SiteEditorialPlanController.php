@@ -6,12 +6,41 @@ use App\Http\Requests\SaveEditorialSourceRequest;
 use App\Models\EditorialSource;
 use App\Models\Site;
 use App\Services\FoOlSlideSourceVerifier;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class SiteEditorialPlanController extends Controller
 {
-    public function show(Site $site): View
+    public function show(Request $request, Site $site): View
+    {
+        $requestedMonth = $request->query('month');
+        $month = is_string($requestedMonth) && preg_match('/^\d{4}-(0[1-9]|1[0-2])$/D', $requestedMonth)
+            ? CarbonImmutable::createFromFormat('!Y-m-d', $requestedMonth.'-01')
+            : false;
+        $month = $month ?: CarbonImmutable::now()->startOfMonth();
+
+        $days = array_fill(0, $month->dayOfWeekIso - 1, null);
+
+        for ($day = 1; $day <= $month->daysInMonth; $day++) {
+            $days[] = $day;
+        }
+
+        while (count($days) % 7 !== 0) {
+            $days[] = null;
+        }
+
+        return view('sites.editorial-overview', [
+            'site' => $site,
+            'month' => $month,
+            'weeks' => array_chunk($days, 7),
+            'today' => CarbonImmutable::today()->format('Y-m-d'),
+            'sourcesCount' => $site->editorialSources()->count(),
+        ]);
+    }
+
+    public function sources(Site $site): View
     {
         return view('sites.editorial-plan', [
             'site' => $site,
@@ -26,7 +55,7 @@ class SiteEditorialPlanController extends Controller
             'is_active' => true,
         ]);
 
-        return redirect()->route('sites.editorial-plan.show', $site)
+        return redirect()->route('sites.editorial-plan.sources.index', $site)
             ->with('status', 'Fonte FoOlSlide aggiunta. La sincronizzazione non è ancora attiva.');
     }
 
@@ -36,7 +65,7 @@ class SiteEditorialPlanController extends Controller
 
         $source->update(['is_active' => ! $source->is_active]);
 
-        return redirect()->route('sites.editorial-plan.show', $site)
+        return redirect()->route('sites.editorial-plan.sources.index', $site)
             ->with('status', $source->is_active ? 'Fonte attivata.' : 'Fonte disattivata.');
     }
 
@@ -57,7 +86,7 @@ class SiteEditorialPlanController extends Controller
 
         $source->update($values);
 
-        return redirect()->route('sites.editorial-plan.show', $site)
+        return redirect()->route('sites.editorial-plan.sources.index', $site)
             ->with('status', 'Fonte aggiornata. Se hai cambiato l’URL, verifica nuovamente l’API.');
     }
 
@@ -66,13 +95,13 @@ class SiteEditorialPlanController extends Controller
         abort_unless($source->site_id === $site->id, 404);
 
         if (! $source->is_active) {
-            return redirect()->route('sites.editorial-plan.show', $site)
+            return redirect()->route('sites.editorial-plan.sources.index', $site)
                 ->with('verification_error', 'Riattiva la fonte prima di verificarla.');
         }
 
         $verified = $verifier->verify($source);
 
-        return redirect()->route('sites.editorial-plan.show', $site)
+        return redirect()->route('sites.editorial-plan.sources.index', $site)
             ->with($verified ? 'status' : 'verification_error', $source->verification_message);
     }
 }

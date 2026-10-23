@@ -159,6 +159,7 @@
                     <div class="flex min-w-56 flex-col items-stretch gap-3">
                         @if ($googleSearchConsoleOAuthConfigured)
                             <a href="{{ route('google-search-console.connect', $site) }}" class="rounded-xl bg-sky-500 px-5 py-3 text-center font-semibold text-slate-950 no-underline hover:bg-sky-400">{{ $searchConsoleIsConnected ? 'Cambia account o proprietà' : 'Collega Search Console' }}</a>
+                            <a href="{{ route('settings.google-search-console.edit', ['site' => $site->id]) }}" class="rounded-xl border border-slate-600 px-5 py-3 text-center text-sm font-semibold text-slate-200 no-underline hover:border-sky-400 hover:text-sky-300">Modifica o rimuovi credenziali OAuth</a>
                         @else
                             <a href="{{ route('settings.google-search-console.edit', ['site' => $site->id]) }}" class="rounded-xl bg-amber-400 px-5 py-3 text-center font-semibold text-slate-950 no-underline hover:bg-amber-300">Configura Search Console</a>
                         @endif
@@ -185,8 +186,8 @@
 
         <section class="mt-8 rounded-3xl border border-slate-800 bg-slate-900 p-8" aria-labelledby="editorial-plan-heading">
             <h2 id="editorial-plan-heading" class="text-xl font-semibold">Piano editoriale</h2>
-            <p class="mt-2 text-sm leading-6 text-slate-400">Aggiungi la fonte da cui Monitor potrà recuperare le uscite. Per ora puoi configurare FoOlSlide-Improved; importazione, calendario e post su X non sono ancora attivi.</p>
-            <a href="{{ route('sites.editorial-plan.show', $site) }}" class="mt-5 inline-flex rounded-xl bg-sky-500 px-5 py-3 font-semibold text-slate-950 no-underline hover:bg-sky-400">Configura piano editoriale</a>
+            <p class="mt-2 text-sm leading-6 text-slate-400">Consulta il calendario e le proposte editoriali. Le fonti dei contenuti si configurano in una pagina separata; importazione, pianificazione e post su X non sono ancora attivi.</p>
+            <a href="{{ route('sites.editorial-plan.show', $site) }}" class="mt-5 inline-flex rounded-xl bg-sky-500 px-5 py-3 font-semibold text-slate-950 no-underline hover:bg-sky-400">Apri piano editoriale</a>
         </section>
     </main>
 @endsection

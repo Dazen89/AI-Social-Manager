@@ -178,11 +178,14 @@
                     </form>
 
                     @if ($setting && ! $hasConnections)
-                        <form method="POST" action="{{ route('settings.google-search-console.destroy') }}" class="mt-4" onsubmit="return confirm('Vuoi rimuovere le credenziali Search Console da questa installazione?');">
+                        <p class="mt-6 text-xs leading-5 text-slate-400">Hai inserito credenziali errate? Puoi correggerle nel modulo qui sopra oppure rimuoverle e ricominciare. La rimozione non modifica il client nella Google Cloud Console.</p>
+                        <form method="POST" action="{{ route('settings.google-search-console.destroy') }}" class="mt-3" onsubmit="return confirm('Vuoi rimuovere le credenziali Search Console da questa installazione?');">
                             @csrf
                             @method('DELETE')
-                            <button type="submit" class="w-full border border-rose-500/30 bg-transparent text-rose-300 hover:bg-rose-500/10">Rimuovi configurazione</button>
+                            <button type="submit" class="w-full rounded-xl border border-rose-500/30 bg-transparent px-5 py-3 text-sm font-semibold text-rose-300 hover:bg-rose-500/10">Rimuovi credenziali OAuth</button>
                         </form>
+                    @elseif ($setting && $hasConnections)
+                        <p class="mt-6 text-xs leading-5 text-amber-300">Per cambiare Client ID o rimuovere le credenziali, scollega prima Search Console da tutti i siti. I token già autorizzati appartengono al client attuale.</p>
                     @endif
                 @endif
 

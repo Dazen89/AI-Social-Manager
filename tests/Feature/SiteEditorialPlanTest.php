@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\PublicHostResolver;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Mockery;
@@ -20,9 +21,11 @@ class SiteEditorialPlanTest extends TestCase
         $sourceUrl = route('sites.editorial-plan.show', $site);
 
         $this->get($sourceUrl)->assertRedirect('/login');
+        $this->get(route('sites.editorial-plan.sources.index', $site))->assertRedirect('/login');
 
         $user = User::factory()->create(['is_admin' => false]);
         $this->actingAs($user)->get($sourceUrl)->assertForbidden();
+        $this->actingAs($user)->get(route('sites.editorial-plan.sources.index', $site))->assertForbidden();
         $this->actingAs($user)->post(route('sites.editorial-plan.sources.store', $site), [
             'provider' => 'foolslide',
             'name' => 'FoOlSlide',
@@ -44,6 +47,15 @@ class SiteEditorialPlanTest extends TestCase
             ->get(route('sites.editorial-plan.show', $site))
             ->assertOk()
             ->assertSee('Piano editoriale')
+            ->assertSee('Calendario')
+            ->assertSee('Proposte editoriali')
+            ->assertSee('Gestisci fonti')
+            ->assertDontSee('Aggiungi una fonte');
+
+        $this->actingAs($admin)
+            ->get(route('sites.editorial-plan.sources.index', $site))
+            ->assertOk()
+            ->assertSee('Fonti editoriali')
             ->assertSee('FoOlSlide-Improved')
             ->assertSee('Puoi verificare l’accesso all’API');
 
@@ -51,7 +63,7 @@ class SiteEditorialPlanTest extends TestCase
             'provider' => 'foolslide',
             'name' => 'Archivio traduzioni',
             'base_url' => 'https://EXAMPLE.test/slide/',
-        ])->assertRedirect(route('sites.editorial-plan.show', $site));
+        ])->assertRedirect(route('sites.editorial-plan.sources.index', $site));
 
         $this->assertDatabaseHas('editorial_sources', [
             'site_id' => $site->id,
@@ -62,8 +74,41 @@ class SiteEditorialPlanTest extends TestCase
         ]);
 
         $this->actingAs($admin)
-            ->get(route('sites.editorial-plan.show', $site))
+            ->get(route('sites.editorial-plan.sources.index', $site))
             ->assertSee('https://example.test/slide/api/reader/chapters/format/json');
+
+        $this->actingAs($admin)
+            ->get(route('sites.editorial-plan.show', $site))
+            ->assertSee('Fonti configurate: 1')
+            ->assertDontSee('Archivio traduzioni');
+    }
+
+    public function test_calendar_navigates_months_without_showing_unavailable_posts(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-22 12:00:00'));
+
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
+
+        $this->actingAs($admin)
+            ->get(route('sites.editorial-plan.show', $site))
+            ->assertOk()
+            ->assertSee('ottobre 2026')
+            ->assertSee('datetime="2026-10-22"', false)
+            ->assertSee('Nessun post da mostrare')
+            ->assertSee('Nessuna proposta disponibile');
+
+        $this->actingAs($admin)
+            ->get(route('sites.editorial-plan.show', ['site' => $site, 'month' => '2026-11']))
+            ->assertOk()
+            ->assertSee('novembre 2026')
+            ->assertSee('datetime="2026-11-01"', false)
+            ->assertDontSee('datetime="2026-10-22"', false);
+
+        $this->actingAs($admin)
+            ->get(route('sites.editorial-plan.show', ['site' => $site, 'month' => 'invalid']))
+            ->assertOk()
+            ->assertSee('ottobre 2026');
     }
 
     public function test_source_must_belong_to_the_site_and_not_be_duplicated(): void
@@ -125,7 +170,7 @@ class SiteEditorialPlanTest extends TestCase
             'provider' => 'foolslide',
             'name' => 'FoOlSlide locale',
             'base_url' => 'http://LOCALHOST:8080/',
-        ])->assertRedirect(route('sites.editorial-plan.show', $site));
+        ])->assertRedirect(route('sites.editorial-plan.sources.index', $site));
 
         $source = $site->editorialSources()->firstOrFail();
         $this->assertSame('http://localhost:8080', $source->base_url);
@@ -222,7 +267,7 @@ class SiteEditorialPlanTest extends TestCase
 
         $this->actingAs($admin)
             ->patch(route('sites.editorial-plan.sources.toggle', [$site, $source]))
-            ->assertRedirect(route('sites.editorial-plan.show', $site));
+            ->assertRedirect(route('sites.editorial-plan.sources.index', $site));
         $this->assertFalse($source->fresh()->is_active);
     }
 
@@ -250,7 +295,7 @@ class SiteEditorialPlanTest extends TestCase
 
         $this->actingAs($admin)
             ->put(route('sites.editorial-plan.sources.update', [$site, $source]), $payload)
-            ->assertRedirect(route('sites.editorial-plan.show', $site));
+            ->assertRedirect(route('sites.editorial-plan.sources.index', $site));
 
         $this->assertDatabaseHas('editorial_sources', [
             'id' => $source->id,
@@ -275,7 +320,7 @@ class SiteEditorialPlanTest extends TestCase
 
         $this->actingAs($admin)
             ->post(route('sites.editorial-plan.sources.verify', [$site, $source]))
-            ->assertRedirect(route('sites.editorial-plan.show', $site))
+            ->assertRedirect(route('sites.editorial-plan.sources.index', $site))
             ->assertSessionHas('status');
 
         $this->assertDatabaseHas('editorial_sources', [
@@ -289,7 +334,7 @@ class SiteEditorialPlanTest extends TestCase
             && $request->url() === 'https://example.test/api/reader/chapters/format/json?page=1&per_page=1');
 
         $this->actingAs($admin)
-            ->get(route('sites.editorial-plan.show', $site))
+            ->get(route('sites.editorial-plan.sources.index', $site))
             ->assertSee('API verificata')
             ->assertSee('Ultimo controllo');
     }

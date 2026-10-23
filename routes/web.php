@@ -30,6 +30,7 @@ Route::middleware('auth')->group(function (): void {
         Route::resource('sites', SiteController::class)->only(['index', 'create', 'store', 'edit', 'update']);
         Route::get('/sites/{site}', SiteAnalyticsOverviewController::class)->name('sites.show');
         Route::get('/sites/{site}/editorial-plan', [SiteEditorialPlanController::class, 'show'])->name('sites.editorial-plan.show');
+        Route::get('/sites/{site}/editorial-plan/sources', [SiteEditorialPlanController::class, 'sources'])->name('sites.editorial-plan.sources.index');
         Route::post('/sites/{site}/editorial-plan/sources', [SiteEditorialPlanController::class, 'store'])->name('sites.editorial-plan.sources.store');
         Route::put('/sites/{site}/editorial-plan/sources/{source}', [SiteEditorialPlanController::class, 'update'])->name('sites.editorial-plan.sources.update');
         Route::patch('/sites/{site}/editorial-plan/sources/{source}/toggle', [SiteEditorialPlanController::class, 'toggle'])->name('sites.editorial-plan.sources.toggle');
