@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Models\EditorialSource;
 use App\Models\Site;
+use App\Services\LocalFoOlSlideUrl;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -43,11 +44,19 @@ class SaveEditorialSourceRequest extends FormRequest
                 return;
             }
 
+            $isLocalUrl = app(LocalFoOlSlideUrl::class)->isAllowed((string) $this->input('base_url'));
+
+            if (Str::lower($parts['scheme']) !== 'https'
+                && ! $isLocalUrl) {
+                $validator->errors()->add('base_url', 'Usa HTTPS pubblico; in locale è ammesso HTTP solo su localhost con una porta non privilegiata.');
+            }
+
             if (isset($parts['user']) || isset($parts['pass']) || isset($parts['query']) || isset($parts['fragment'])) {
                 $validator->errors()->add('base_url', 'Inserisci l’indirizzo base di FoOlSlide, senza credenziali, query o frammenti.');
             }
 
-            if (Str::lower(rtrim($parts['host'], '.')) !== $site->host) {
+            if (Str::lower(rtrim($parts['host'], '.')) !== $site->host
+                && ! $isLocalUrl) {
                 $validator->errors()->add('base_url', 'La fonte deve appartenere allo stesso dominio del sito selezionato.');
             }
 
@@ -61,6 +70,13 @@ class SaveEditorialSourceRequest extends FormRequest
                 $validator->errors()->add('base_url', 'Questa fonte FoOlSlide è già stata aggiunta al sito.');
             }
         });
+    }
+
+    public function messages(): array
+    {
+        return [
+            'base_url.url' => 'Inserisci un URL HTTPS valido o, in locale, un URL HTTP su localhost.',
+        ];
     }
 
     protected function prepareForValidation(): void

@@ -63,15 +63,30 @@ class SiteController extends Controller
 
     public function update(SaveSiteRequest $request, Site $site): RedirectResponse
     {
-        $site->update(Arr::only($request->validated(), [
+        $values = Arr::only($request->validated(), [
             'name',
             'base_url',
             'host',
             'is_active',
-        ]));
+        ]);
+
+        $hostChanged = $site->host !== $values['host'];
+
+        if ($hostChanged) {
+            $site->editorialSources()->update([
+                'verification_status' => 'not_checked',
+                'verification_message' => null,
+                'last_checked_at' => null,
+                'last_verified_at' => null,
+            ]);
+        }
+
+        $site->update($values);
 
         return redirect()
             ->route('sites.edit', $site)
-            ->with('status', 'Dati del sito aggiornati correttamente.');
+            ->with('status', $hostChanged
+                ? 'Dominio aggiornato. Controlla l’URL della fonte editoriale e verifica nuovamente l’API.'
+                : 'Dati del sito aggiornati correttamente.');
     }
 }

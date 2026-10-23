@@ -14,16 +14,20 @@
                 <h1 class="mt-2 text-3xl font-semibold">Piano editoriale</h1>
                 <p class="mt-3 max-w-2xl text-slate-400">Configura da dove Monitor potrà leggere le nuove uscite. La programmazione, il calendario e la pubblicazione su X arriveranno nei prossimi passaggi.</p>
             </div>
-            <span class="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-sm text-amber-200">Configurazione iniziale</span>
+            <span class="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-sm text-amber-200">Fonte e verifica API</span>
         </div>
 
         @if (session('status'))
             <div class="mt-7 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200" role="status">{{ session('status') }}</div>
         @endif
 
+        @if (session('verification_error'))
+            <div class="mt-7 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200" role="alert">{{ session('verification_error') }}</div>
+        @endif
+
         <section class="mt-8 rounded-3xl border border-slate-800 bg-slate-900 p-8" aria-labelledby="sources-heading">
             <h2 id="sources-heading" class="text-xl font-semibold">Fonti dei contenuti</h2>
-            <p class="mt-2 text-sm leading-6 text-slate-400">Una fonte è l’installazione da cui arriveranno i contenuti candidati ai post. Per ora è disponibile FoOlSlide-Improved. Aggiungerla non legge ancora contenuti e non pubblica nulla.</p>
+            <p class="mt-2 text-sm leading-6 text-slate-400">Una fonte è l’installazione da cui arriveranno i contenuti candidati ai post. Per ora è disponibile FoOlSlide-Improved. Puoi verificare l’accesso all’API in sola lettura; nessun contenuto viene importato o pubblicato.</p>
 
             @forelse ($sources as $source)
                 <article class="mt-6 rounded-2xl border border-slate-700 bg-slate-950/50 p-5">
@@ -32,15 +36,30 @@
                             <div class="flex flex-wrap items-center gap-3">
                                 <h3 class="font-semibold">{{ $source->name }}</h3>
                                 <span class="rounded-full px-2.5 py-1 text-xs {{ $source->is_active ? 'bg-emerald-500/10 text-emerald-300' : 'bg-slate-700 text-slate-300' }}">{{ $source->is_active ? 'Abilitata' : 'Disattivata' }}</span>
+                                <span class="rounded-full px-2.5 py-1 text-xs {{ $source->verification_status === 'verified' ? 'bg-emerald-500/10 text-emerald-300' : ($source->verification_status === 'failed' ? 'bg-rose-500/10 text-rose-300' : 'bg-slate-700 text-slate-300') }}">{{ match ($source->verification_status) { 'verified' => 'API verificata', 'failed' => 'Verifica non riuscita', default => 'API da verificare' } }}</span>
                             </div>
                             <p class="mt-2 text-sm text-slate-400">FoOlSlide · <span class="break-all">{{ $source->base_url }}</span></p>
+                            @if ($source->verification_message)
+                                <p class="mt-2 text-sm {{ $source->verification_status === 'verified' ? 'text-emerald-300' : 'text-rose-300' }}">{{ $source->verification_message }}</p>
+                            @endif
+                            @if ($source->last_checked_at)
+                                <p class="mt-1 text-xs text-slate-500">Ultimo controllo: {{ $source->last_checked_at->format('d/m/Y H:i') }}@if ($source->last_verified_at && $source->verification_status !== 'verified') · Ultimo esito positivo: {{ $source->last_verified_at->format('d/m/Y H:i') }}@endif</p>
+                            @endif
                             <p class="mt-2 text-xs text-amber-200">Sincronizzazione non ancora disponibile. Nessun contenuto è stato importato.</p>
                         </div>
-                        <form method="POST" action="{{ route('sites.editorial-plan.sources.toggle', [$site, $source]) }}">
-                            @csrf
-                            @method('PATCH')
-                            <button type="submit" class="rounded-xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200 hover:bg-slate-800">{{ $source->is_active ? 'Disattiva' : 'Riattiva' }}</button>
-                        </form>
+                        <div class="flex flex-wrap gap-2">
+                            @if ($source->is_active)
+                                <form method="POST" action="{{ route('sites.editorial-plan.sources.verify', [$site, $source]) }}">
+                                    @csrf
+                                    <button type="submit" class="rounded-xl border border-sky-500/50 bg-transparent px-4 py-2 text-sm font-semibold text-sky-300 hover:bg-slate-800">Verifica API</button>
+                                </form>
+                            @endif
+                            <form method="POST" action="{{ route('sites.editorial-plan.sources.toggle', [$site, $source]) }}">
+                                @csrf
+                                @method('PATCH')
+                                <button type="submit" class="rounded-xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200 hover:bg-slate-800">{{ $source->is_active ? 'Disattiva' : 'Riattiva' }}</button>
+                            </form>
+                        </div>
                     </div>
                     <details class="mt-4 text-sm text-slate-400">
                         <summary class="cursor-pointer text-sky-400">Mostra endpoint previsto</summary>
@@ -74,7 +93,10 @@
 
         <section class="mt-8 rounded-3xl border border-slate-800 bg-slate-900 p-8" aria-labelledby="add-source-heading">
             <h2 id="add-source-heading" class="text-xl font-semibold">Aggiungi una fonte</h2>
-            <p class="mt-2 text-sm text-slate-400">Indica l’indirizzo pubblico della cartella in cui è installato FoOlSlide. Se è nella radice del sito, usa l’URL principale; se è in una sottocartella, includila.</p>
+            <p class="mt-2 text-sm text-slate-400">Indica l’indirizzo pubblico HTTPS della cartella in cui è installato FoOlSlide. Se è nella radice del sito, usa l’URL principale; se è in una sottocartella, includila.</p>
+            @if (config('app.env') === 'local')
+                <p class="mt-2 text-sm text-sky-300">Per provare l’installazione Docker locale, puoi aggiungere <code>http://localhost:8080</code> anche a questo sito, indipendentemente dal suo dominio e dalla sua porta. Questa eccezione vale solo in locale: prima di usare la fonte in produzione servirà un URL HTTPS pubblico.</p>
+            @endif
 
             <form method="POST" action="{{ route('sites.editorial-plan.sources.store', $site) }}" class="mt-6 space-y-5">
                 @csrf
@@ -93,7 +115,7 @@
                 <div>
                     <label for="base_url" class="block text-sm font-medium text-slate-200">URL base di FoOlSlide</label>
                     <input id="base_url" name="base_url" type="url" inputmode="url" value="{{ old('source_id') ? $site->base_url : old('base_url', $site->base_url) }}" required maxlength="2048" placeholder="https://example.org/slide" class="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-100">
-                    <p class="mt-2 text-sm text-slate-400">Deve appartenere al dominio del sito {{ $site->host }}. Non inserire l’URL di un fumetto, un capitolo o dell’endpoint API.</p>
+                    <p class="mt-2 text-sm text-slate-400">Le fonti pubbliche devono appartenere al dominio {{ $site->host }} e usare HTTPS sulla porta standard. Solo in locale puoi usare HTTP su localhost con una porta non privilegiata diversa (ad esempio 8080). Non inserire l’URL di un fumetto, un capitolo o dell’endpoint API.</p>
                     @unless (old('source_id')) @error('base_url') <p class="mt-2 text-sm text-rose-300">{{ $message }}</p> @enderror @endunless
                 </div>
                 <button type="submit" class="rounded-xl bg-sky-500 px-5 py-3 font-semibold text-slate-950 hover:bg-sky-400">Aggiungi fonte</button>

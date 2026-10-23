@@ -183,4 +183,31 @@ class SiteManagementTest extends TestCase
             ->assertSee('Configurazione precedente')
             ->assertSee('non rappresentano ancora una connessione verificata');
     }
+
+    public function test_changing_site_host_invalidates_editorial_source_verification(): void
+    {
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create(['base_url' => 'https://example.test', 'host' => 'example.test']);
+        $source = $site->editorialSources()->create([
+            'provider' => 'foolslide',
+            'name' => 'FoOlSlide',
+            'base_url' => 'https://example.test',
+            'is_active' => true,
+            'verification_status' => 'verified',
+            'verification_message' => 'API verified',
+            'last_checked_at' => now(),
+            'last_verified_at' => now(),
+        ]);
+
+        $this->actingAs($admin)->put(route('sites.update', $site), [
+            'name' => $site->name,
+            'base_url' => 'https://new.example.test',
+            'is_active' => '1',
+        ])->assertRedirect(route('sites.edit', $site));
+
+        $source->refresh();
+        $this->assertSame('not_checked', $source->verification_status);
+        $this->assertNull($source->last_checked_at);
+        $this->assertNull($source->last_verified_at);
+    }
 }

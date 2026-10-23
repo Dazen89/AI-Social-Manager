@@ -202,6 +202,10 @@ Documentazione ufficiale:
 6. Scegli per ogni servizio una proprietà dall’elenco verificato restituito da Google.
 7. Torna a **Siti** e apri la panoramica del sito per consultare i report degli ultimi 7, 28 o 90 giorni e, facoltativamente, generarne l’analisi AI.
 
+Per preparare una fonte editoriale, apri il **Piano editoriale** del sito, aggiungi l’URL HTTPS pubblico dell’installazione FoOlSlide-Improved e usa **Verifica API**. Il controllo legge una sola pagina dell’API dei capitoli; se l’elenco è vuoto verifica l’endpoint di conteggio. Salva soltanto esito, messaggio diagnostico e data, senza importare capitoli o pubblicare post. Per le fonti pubbliche accetta solo il dominio registrato del sito, risolto verso indirizzi pubblici. La verifica non segue reindirizzamenti e limita tempi e dimensione della risposta.
+
+Per un test Docker sulla stessa macchina, in ambiente `APP_ENV=local` puoi aggiungere a qualsiasi sito registrato una fonte FoOlSlide con URL `http://localhost:8080` (eventualmente seguito dalla sottocartella di installazione), anche se il sito usa un altro dominio o un’altra porta. L’eccezione HTTP vale solo per il nome letterale `localhost` con una porta non privilegiata; la verifica blocca comunque i reindirizzamenti e non importa contenuti. La fonte locale non è utilizzabile in produzione: prima di attivare una futura sincronizzazione, sostituiscila con l’URL HTTPS pubblico sul dominio del sito.
+
 Se esiste uno stream web con lo stesso dominio del sito, l’applicazione salva automaticamente anche Data Stream ID e Measurement ID. In caso contrario la proprietà resta collegata e viene mostrato un avviso esplicito. La panoramica interroga la Data API su richiesta, filtra i report per l’hostname registrato e conserva la risposta in cache per dieci minuti per ridurre latenza e consumo di quota.
 
 ## Verifiche

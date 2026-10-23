@@ -33,6 +33,9 @@ Route::middleware('auth')->group(function (): void {
         Route::post('/sites/{site}/editorial-plan/sources', [SiteEditorialPlanController::class, 'store'])->name('sites.editorial-plan.sources.store');
         Route::put('/sites/{site}/editorial-plan/sources/{source}', [SiteEditorialPlanController::class, 'update'])->name('sites.editorial-plan.sources.update');
         Route::patch('/sites/{site}/editorial-plan/sources/{source}/toggle', [SiteEditorialPlanController::class, 'toggle'])->name('sites.editorial-plan.sources.toggle');
+        Route::post('/sites/{site}/editorial-plan/sources/{source}/verify', [SiteEditorialPlanController::class, 'verify'])
+            ->middleware('throttle:6,1')
+            ->name('sites.editorial-plan.sources.verify');
         Route::post('/sites/{site}/analytics/insights', [AnalyticsInsightController::class, 'store'])
             ->name('sites.analytics-insights.store');
 

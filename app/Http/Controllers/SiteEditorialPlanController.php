@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\SaveEditorialSourceRequest;
 use App\Models\EditorialSource;
 use App\Models\Site;
+use App\Services\FoOlSlideSourceVerifier;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\View\View;
 
@@ -43,9 +44,35 @@ class SiteEditorialPlanController extends Controller
     {
         abort_unless($source->site_id === $site->id, 404);
 
-        $source->update($request->safe()->only(['provider', 'name', 'base_url']));
+        $values = $request->safe()->only(['provider', 'name', 'base_url']);
+
+        if ($source->base_url !== $values['base_url']) {
+            $values += [
+                'verification_status' => 'not_checked',
+                'verification_message' => null,
+                'last_checked_at' => null,
+                'last_verified_at' => null,
+            ];
+        }
+
+        $source->update($values);
 
         return redirect()->route('sites.editorial-plan.show', $site)
-            ->with('status', 'Fonte aggiornata. La sincronizzazione non è ancora attiva.');
+            ->with('status', 'Fonte aggiornata. Se hai cambiato l’URL, verifica nuovamente l’API.');
+    }
+
+    public function verify(Site $site, EditorialSource $source, FoOlSlideSourceVerifier $verifier): RedirectResponse
+    {
+        abort_unless($source->site_id === $site->id, 404);
+
+        if (! $source->is_active) {
+            return redirect()->route('sites.editorial-plan.show', $site)
+                ->with('verification_error', 'Riattiva la fonte prima di verificarla.');
+        }
+
+        $verified = $verifier->verify($source);
+
+        return redirect()->route('sites.editorial-plan.show', $site)
+            ->with($verified ? 'status' : 'verification_error', $source->verification_message);
     }
 }
