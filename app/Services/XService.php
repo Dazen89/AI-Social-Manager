@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\Http;
 
 class XService
 {
+    private const CREATE_POST_ENDPOINT = 'https://api.x.com/2/tweets';
+
     private const AUTHORIZATION_ENDPOINT = 'https://x.com/i/oauth2/authorize';
 
     private const TOKEN_ENDPOINT = 'https://api.x.com/2/oauth2/token';
@@ -184,6 +186,45 @@ class XService
         ]);
 
         return $connection->access_token;
+    }
+
+    public function createPost(XConnection $connection, string $text): string
+    {
+        $response = Http::withToken($this->validAccessToken($connection))
+            ->acceptJson()->timeout(15)
+            ->post(self::CREATE_POST_ENDPOINT, ['text' => $text]);
+
+        $id = $response->json('data.id');
+
+        if ($response->failed() || ! is_string($id) || $id === '') {
+            throw new XApiException('X non ha confermato la pubblicazione del post.');
+        }
+
+        return $id;
+    }
+
+    /** @return array<string, int> */
+    public function postPublicMetrics(XConnection $connection, string $postId): array
+    {
+        $response = Http::withToken($this->validAccessToken($connection))
+            ->acceptJson()->timeout(15)
+            ->get(self::CREATE_POST_ENDPOINT.'/'.$postId, ['tweet.fields' => 'public_metrics']);
+        $metrics = $response->json('data.public_metrics');
+
+        if ($response->failed() || ! is_array($metrics)) {
+            throw new XApiException('Le metriche del post X non sono disponibili.');
+        }
+
+        $allowed = ['impression_count', 'like_count', 'reply_count', 'repost_count', 'quote_count', 'bookmark_count'];
+        $result = [];
+
+        foreach ($allowed as $field) {
+            if (isset($metrics[$field]) && filter_var($metrics[$field], FILTER_VALIDATE_INT) !== false) {
+                $result[$field] = max(0, (int) $metrics[$field]);
+            }
+        }
+
+        return $result;
     }
 
     public function revoke(XConnection $connection): bool

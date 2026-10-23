@@ -8,6 +8,7 @@ use App\Services\GoogleAnalyticsService;
 use App\Services\GoogleSearchConsoleService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class SiteController extends Controller
@@ -72,21 +73,32 @@ class SiteController extends Controller
 
         $hostChanged = $site->host !== $values['host'];
 
-        if ($hostChanged) {
-            $site->editorialSources()->update([
-                'verification_status' => 'not_checked',
-                'verification_message' => null,
-                'last_checked_at' => null,
-                'last_verified_at' => null,
-            ]);
-        }
+        DB::transaction(function () use ($site, $values, $hostChanged): void {
+            if ($hostChanged) {
+                $site->editorialSources()->update([
+                    'verification_status' => 'not_checked',
+                    'verification_message' => null,
+                    'last_checked_at' => null,
+                    'last_verified_at' => null,
+                ]);
+                $site->editorialContents()->update([
+                    'eligibility_status' => 'pending',
+                    'eligibility_confirmed_by_user_id' => null,
+                ]);
+                $site->editorialProposals()->where('status', 'approved')->update([
+                    'status' => 'draft',
+                    'reviewed_by_user_id' => null,
+                    'reviewed_at' => null,
+                ]);
+            }
 
-        $site->update($values);
+            $site->update($values);
+        });
 
         return redirect()
             ->route('sites.edit', $site)
             ->with('status', $hostChanged
-                ? 'Dominio aggiornato. Controlla l’URL della fonte editoriale e verifica nuovamente l’API.'
+                ? 'Dominio aggiornato. Verifica di nuovo le fonti e riconferma l’idoneità delle uscite; le proposte approvate sono tornate bozze.'
                 : 'Dati del sito aggiornati correttamente.');
     }
 }

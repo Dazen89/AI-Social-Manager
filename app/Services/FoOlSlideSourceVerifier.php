@@ -24,10 +24,9 @@ class FoOlSlideSourceVerifier
             $result = $this->readJson($source->apiChaptersUrl().'?page=1&per_page=1', $host, $address, $port);
 
             if ($result['status'] === 200) {
-                $chapters = $result['json']['chapters'] ?? null;
+                $chapters = $this->chapterEntries($result['json']['chapters'] ?? null, 1);
 
-                if (! is_array($chapters) || ! array_is_list($chapters)
-                    || (isset($chapters[0]) && (! is_array($chapters[0]['comic'] ?? null) || ! is_array($chapters[0]['chapter'] ?? null)))) {
+                if ($chapters === null) {
                     return $this->failed($source, 'L’API risponde, ma il formato dei capitoli non è quello previsto da FoOlSlide.');
                 }
 
@@ -58,6 +57,50 @@ class FoOlSlideSourceVerifier
         } catch (Throwable) {
             return $this->failed($source, 'Impossibile contattare l’API FoOlSlide. Controlla URL, rete e disponibilità del sito.');
         }
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function chapterPage(EditorialSource $source, int $page, int $perPage = 20): array
+    {
+        if ($page < 1 || $page > 3 || $perPage < 1 || $perPage > 20) {
+            throw new EditorialSourceVerificationException('La richiesta di importazione supera i limiti consentiti.');
+        }
+
+        [$host, $address, $port] = $this->safeTarget($source);
+        $url = $source->apiChaptersUrl().'?page='.$page.'&per_page='.$perPage.'&orderby=desc_created';
+        $result = $this->readJson($url, $host, $address, $port);
+
+        if ($result['status'] === 404) {
+            return [];
+        }
+
+        $chapters = $this->chapterEntries($result['json']['chapters'] ?? null, $perPage);
+
+        if ($result['status'] !== 200 || $chapters === null) {
+            throw new EditorialSourceVerificationException('La fonte non ha restituito un elenco di capitoli valido. Riprova o verifica l’API.');
+        }
+
+        return $chapters;
+    }
+
+    /** @return array<int, array<string, mixed>>|null */
+    private function chapterEntries(mixed $raw, int $limit): ?array
+    {
+        if (! is_array($raw) || count($raw) > $limit) {
+            return null;
+        }
+
+        foreach ($raw as $key => $entry) {
+            // PHP can encode a filtered, sparse numeric array as a JSON object.
+            if ((! is_int($key) && (! is_string($key) || ! ctype_digit($key)))
+                || ! is_array($entry)
+                || ! is_array($entry['comic'] ?? null)
+                || ! is_array($entry['chapter'] ?? null)) {
+                return null;
+            }
+        }
+
+        return array_values($raw);
     }
 
     /** @return array{string, string, int} */

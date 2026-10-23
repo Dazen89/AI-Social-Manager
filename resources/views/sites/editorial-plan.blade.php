@@ -12,7 +12,7 @@
             <div>
                 <p class="text-sm font-semibold uppercase tracking-[0.2em] text-sky-400">{{ $site->name }}</p>
                 <h1 class="mt-2 text-3xl font-semibold">Fonti editoriali</h1>
-                <p class="mt-3 max-w-2xl text-slate-400">Configura da dove Monitor potrà leggere le nuove uscite. La programmazione e la pubblicazione su X arriveranno nei prossimi passaggi.</p>
+                <p class="mt-3 max-w-2xl text-slate-400">Configura da dove Monitor legge i capitoli e autorizza esplicitamente le fonti che possono essere promosse automaticamente su X.</p>
             </div>
             <span class="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-sm text-amber-200">Fonte e verifica API</span>
         </div>
@@ -32,7 +32,7 @@
 
         <section class="mt-8 rounded-3xl border border-slate-800 bg-slate-900 p-8" aria-labelledby="sources-heading">
             <h2 id="sources-heading" class="text-xl font-semibold">Fonti dei contenuti</h2>
-            <p class="mt-2 text-sm leading-6 text-slate-400">Una fonte è l’installazione da cui arriveranno i contenuti candidati ai post. Per ora è disponibile FoOlSlide-Improved. Puoi verificare l’accesso all’API in sola lettura; nessun contenuto viene importato o pubblicato.</p>
+            <p class="mt-2 text-sm leading-6 text-slate-400">Verifica l’API FoOlSlide-Improved, poi imposta la frequenza nel <a href="{{ route('sites.editorial-plan.show', $site) }}" class="text-sky-400">piano editoriale</a>. L’autorizzazione della fonte attesta che i suoi capitoli possono essere promossi; da sola non abilita la pubblicazione su X.</p>
 
             @forelse ($sources as $source)
                 <article class="mt-6 rounded-2xl border border-slate-700 bg-slate-950/50 p-5">
@@ -50,7 +50,7 @@
                             @if ($source->last_checked_at)
                                 <p class="mt-1 text-xs text-slate-500">Ultimo controllo: {{ $source->last_checked_at->format('d/m/Y H:i') }}@if ($source->last_verified_at && $source->verification_status !== 'verified') · Ultimo esito positivo: {{ $source->last_verified_at->format('d/m/Y H:i') }}@endif</p>
                             @endif
-                            <p class="mt-2 text-xs text-amber-200">Sincronizzazione non ancora disponibile. Nessun contenuto è stato importato.</p>
+                            <p class="mt-2 text-xs text-slate-400">Uscite rilevate: {{ $source->contents_count }}. Puoi rivederle o escluderle sotto il calendario dei post.</p>
                         </div>
                         <div class="flex flex-wrap gap-2">
                             @if ($source->is_active)
@@ -66,6 +66,18 @@
                             </form>
                         </div>
                     </div>
+                    <form method="POST" action="{{ route('sites.editorial-plan.sources.promotion-authorization', [$site, $source]) }}" class="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-slate-300">
+                        @csrf @method('PATCH')
+                        @if ($source->promotion_authorized_at)
+                            <input type="hidden" name="authorized" value="0">
+                            <p>Promozione automatica autorizzata il {{ $source->promotion_authorized_at->format('d/m/Y') }}. I capitoli esclusi restano esclusi.</p>
+                            <button class="mt-2 rounded-lg border border-amber-500/50 px-3 py-1 text-amber-200">Revoca autorizzazione</button>
+                        @else
+                            <input type="hidden" name="authorized" value="1">
+                            <p>Confermo di avere i diritti e l’autorizzazione per promuovere automaticamente su X i capitoli pubblici di questa fonte. Potrò escludere singoli capitoli dal calendario.</p>
+                            <button class="mt-2 rounded-lg border border-amber-500/50 px-3 py-1 text-amber-200">Autorizza promozione</button>
+                        @endif
+                    </form>
                     <details class="mt-4 text-sm text-slate-400">
                         <summary class="cursor-pointer text-sky-400">Mostra endpoint previsto</summary>
                         <code class="mt-2 block break-all rounded-lg bg-slate-900 p-3 text-xs text-slate-300">{{ $source->apiChaptersUrl() }}</code>
@@ -128,13 +140,13 @@
         </section>
 
         <section class="mt-8 rounded-3xl border border-slate-800 bg-slate-900 p-8" aria-labelledby="guide-heading">
-            <h2 id="guide-heading" class="text-xl font-semibold">Come funzionerà il collegamento</h2>
+            <h2 id="guide-heading" class="text-xl font-semibold">Come funziona il collegamento</h2>
             <ol class="mt-4 list-inside list-decimal space-y-3 text-sm leading-6 text-slate-300">
                 <li>FoOlSlide-Improved espone un’API pubblica di sola lettura per elencare i capitoli, con formato JSON, pagine e ordinamento. Sono disponibili anche RSS e Atom.</li>
-                <li>Nel prossimo incremento Monitor leggerà solo le uscite ammesse, salverà gli identificativi e gli URL canonici ed eviterà i duplicati.</li>
-                <li>Una regola di idoneità e un’approvazione esplicita precederanno qualsiasi proposta o pubblicazione su X. Nessun post viene generato da questa pagina.</li>
+                <li>Quando il piano automatico è attivo, Monitor legge a intervalli configurati le due pagine più recenti, salva identificativi e URL canonici ed evita i duplicati.</li>
+                <li>Il calendario mostra i post X con le motivazioni dell’AI. Se autorizzi la fonte e attivi la pubblicazione nel sito, Monitor può approvarli e inviarli automaticamente; puoi sempre escludere capitoli o modificare il piano prima dell’invio.</li>
             </ol>
-            <p class="mt-4 text-sm text-amber-200">Attenzione: l’endpoint dei capitoli non esclude esplicitamente quelli nascosti. La futura sincronizzazione dovrà applicare un filtro di visibilità e le regole editoriali prima di usare i dati.</p>
+            <p class="mt-4 text-sm text-amber-200">Monitor scarta le voci marcate come nascoste e gli URL esterni alla fonte. Autorizza la promozione automatica soltanto per contenuti di cui hai verificato diritti e idoneità.</p>
             <a href="https://github.com/fcibecchini/FoOlSlide-Improved/blob/master/application/controllers/api/reader.php" target="_blank" rel="noopener noreferrer" class="mt-4 inline-flex text-sm text-sky-400 underline underline-offset-4">Vedi il controller API nel repository FoOlSlide ↗</a>
         </section>
     </main>

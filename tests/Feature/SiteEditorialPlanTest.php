@@ -15,6 +15,30 @@ class SiteEditorialPlanTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_source_promotion_requires_explicit_admin_authorization_and_can_be_revoked(): void
+    {
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create(['host' => 'example.test', 'base_url' => 'https://example.test']);
+        $source = $site->editorialSources()->create([
+            'provider' => 'foolslide', 'name' => 'Archivio', 'base_url' => 'https://example.test',
+            'is_active' => true, 'verification_status' => 'verified',
+        ]);
+        $content = $source->contents()->create([
+            'site_id' => $site->id, 'external_id' => '1', 'series_title' => 'Serie',
+            'title' => 'Capitolo 1', 'public_url' => 'https://example.test/chapter/1',
+            'last_seen_at' => now(),
+        ]);
+
+        $this->actingAs($admin)->patch(route('sites.editorial-plan.sources.promotion-authorization', [$site, $source]), ['authorized' => '1'])
+            ->assertSessionHas('status');
+        $this->assertNotNull($source->fresh()->promotion_authorized_at);
+        $this->assertSame('eligible', $content->fresh()->eligibility_status);
+
+        $this->actingAs($admin)->patch(route('sites.editorial-plan.sources.promotion-authorization', [$site, $source]), ['authorized' => '0'])
+            ->assertSessionHas('status');
+        $this->assertNull($source->fresh()->promotion_authorized_at);
+    }
+
     public function test_only_administrators_can_manage_editorial_sources(): void
     {
         $site = Site::factory()->create();
@@ -57,7 +81,7 @@ class SiteEditorialPlanTest extends TestCase
             ->assertOk()
             ->assertSee('Fonti editoriali')
             ->assertSee('FoOlSlide-Improved')
-            ->assertSee('Puoi verificare l’accesso all’API');
+            ->assertSee('L’autorizzazione della fonte attesta');
 
         $this->actingAs($admin)->post(route('sites.editorial-plan.sources.store', $site), [
             'provider' => 'foolslide',
@@ -95,7 +119,7 @@ class SiteEditorialPlanTest extends TestCase
             ->assertOk()
             ->assertSee('ottobre 2026')
             ->assertSee('datetime="2026-10-22"', false)
-            ->assertSee('Nessun post da mostrare')
+            ->assertSee('Nessun post proposto in questo mese')
             ->assertSee('Nessuna proposta disponibile');
 
         $this->actingAs($admin)

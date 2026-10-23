@@ -41,4 +41,24 @@ class Site extends Model
     {
         return $this->hasMany(EditorialSource::class);
     }
+
+    public function editorialContents(): HasMany
+    {
+        return $this->hasMany(EditorialContent::class);
+    }
+
+    public function editorialProposals(): HasMany
+    {
+        return $this->hasMany(EditorialProposal::class);
+    }
+
+    public function editorialSchedule(): HasOne
+    {
+        return $this->hasOne(EditorialSchedule::class);
+    }
+
+    public function editorialCadenceRecommendations(): HasMany
+    {
+        return $this->hasMany(EditorialCadenceRecommendation::class);
+    }
 }

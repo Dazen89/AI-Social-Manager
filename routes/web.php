@@ -4,6 +4,8 @@ use App\Http\Controllers\AiIntegrationSettingsController;
 use App\Http\Controllers\AnalyticsInsightController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\EditorialScheduleController;
+use App\Http\Controllers\EditorialWorkflowController;
 use App\Http\Controllers\GoogleAnalyticsConnectionController;
 use App\Http\Controllers\GoogleAnalyticsSettingsController;
 use App\Http\Controllers\GoogleSearchConsoleConnectionController;
@@ -31,12 +33,29 @@ Route::middleware('auth')->group(function (): void {
         Route::get('/sites/{site}', SiteAnalyticsOverviewController::class)->name('sites.show');
         Route::get('/sites/{site}/editorial-plan', [SiteEditorialPlanController::class, 'show'])->name('sites.editorial-plan.show');
         Route::get('/sites/{site}/editorial-plan/sources', [SiteEditorialPlanController::class, 'sources'])->name('sites.editorial-plan.sources.index');
+        Route::get('/sites/{site}/editorial-plan/contents', [SiteEditorialPlanController::class, 'contents'])->name('sites.editorial-plan.contents.index');
+        Route::put('/sites/{site}/editorial-plan/schedule', [EditorialScheduleController::class, 'update'])
+            ->name('sites.editorial-plan.schedule.update');
+        Route::post('/sites/{site}/editorial-plan/run', [EditorialScheduleController::class, 'runNow'])
+            ->middleware('throttle:2,1')->name('sites.editorial-plan.run');
         Route::post('/sites/{site}/editorial-plan/sources', [SiteEditorialPlanController::class, 'store'])->name('sites.editorial-plan.sources.store');
         Route::put('/sites/{site}/editorial-plan/sources/{source}', [SiteEditorialPlanController::class, 'update'])->name('sites.editorial-plan.sources.update');
         Route::patch('/sites/{site}/editorial-plan/sources/{source}/toggle', [SiteEditorialPlanController::class, 'toggle'])->name('sites.editorial-plan.sources.toggle');
+        Route::patch('/sites/{site}/editorial-plan/sources/{source}/promotion-authorization', [SiteEditorialPlanController::class, 'promotionAuthorization'])
+            ->name('sites.editorial-plan.sources.promotion-authorization');
         Route::post('/sites/{site}/editorial-plan/sources/{source}/verify', [SiteEditorialPlanController::class, 'verify'])
             ->middleware('throttle:6,1')
             ->name('sites.editorial-plan.sources.verify');
+        Route::post('/sites/{site}/editorial-plan/sources/{source}/import', [EditorialWorkflowController::class, 'import'])
+            ->middleware('throttle:3,1')->name('sites.editorial-plan.sources.import');
+        Route::patch('/sites/{site}/editorial-plan/contents/{content}/eligibility', [EditorialWorkflowController::class, 'eligibility'])
+            ->name('sites.editorial-plan.contents.eligibility');
+        Route::post('/sites/{site}/editorial-plan/proposals/generate', [EditorialWorkflowController::class, 'generate'])
+            ->middleware('throttle:2,1')->name('sites.editorial-plan.proposals.generate');
+        Route::patch('/sites/{site}/editorial-plan/proposals/{proposal}', [EditorialWorkflowController::class, 'update'])
+            ->name('sites.editorial-plan.proposals.update');
+        Route::patch('/sites/{site}/editorial-plan/proposals/{proposal}/review', [EditorialWorkflowController::class, 'review'])
+            ->name('sites.editorial-plan.proposals.review');
         Route::post('/sites/{site}/analytics/insights', [AnalyticsInsightController::class, 'store'])
             ->name('sites.analytics-insights.store');
 
