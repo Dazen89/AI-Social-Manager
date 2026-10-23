@@ -124,7 +124,7 @@
                         <div class="max-w-3xl">
                             <p class="text-sm font-semibold uppercase tracking-[0.18em] text-violet-300">Analista AI</p>
                             <h2 id="ai-insight-heading" class="mt-2 text-2xl font-semibold">I numeri tradotti in decisioni</h2>
-                            <p class="mt-2 leading-7 text-slate-400">Confronta questo periodo con quello precedente, evidenzia rischi e opportunità e propone azioni motivate dai dati. L’analisi non modifica il sito né Google Analytics.</p>
+                            <p class="mt-2 leading-7 text-slate-400">Confronta GA4 con il periodo precedente e, se disponibili, usa anche i dati Search Console per evidenziare rischi e opportunità. I due servizi hanno periodi e metriche diversi. L’analisi non modifica il sito né i servizi Google.</p>
                         </div>
 
                         @if ($activeAiIntegration?->status === 'verified')
@@ -156,6 +156,7 @@
                                 <span>{{ config('ai.providers.'.$analyticsInsight->provider.'.models.'.$analyticsInsight->model, $analyticsInsight->model) }} · {{ $analyticsInsight->generated_at->format('d/m/Y H:i') }}</span>
                                 <span>{{ number_format($analyticsInsight->total_tokens, 0, ',', '.') }} token registrati</span>
                             </div>
+                            <p class="mt-2 text-xs text-slate-500">Fonti di questa analisi: GA4{{ data_get($analyticsInsight->source_snapshot, 'search_console.status') === 'available' ? ' e Search Console' : ' (Search Console non inclusa)' }}.</p>
                             <p class="mt-4 text-lg leading-8 text-slate-200">{{ $analysis['summary'] }}</p>
 
                             <div class="mt-7 grid gap-4 lg:grid-cols-2">
@@ -341,5 +342,60 @@
                 <p class="mt-6 text-xs leading-5 text-slate-500">Questa è una prima vista esplorativa dei dati disponibili tramite Google Analytics Data API. I numeri possono differire dai report standard di GA4 per periodo, filtri, modellazione e aggiornamento dei dati.</p>
             @endif
         @endunless
+
+        <section class="mt-8 rounded-3xl border border-slate-800 bg-slate-900 p-6 sm:p-8" aria-labelledby="search-console-heading">
+            <div class="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                    <p class="text-sm font-semibold uppercase tracking-[0.18em] text-emerald-400">Google Search Console</p>
+                    <h2 id="search-console-heading" class="mt-2 text-2xl font-semibold">Visibilità nella ricerca Google</h2>
+                    <p class="mt-2 text-sm leading-6 text-slate-400">Dati della proprietà selezionata, filtrati per l’host {{ $site->host }}. Sono distinti dalle sessioni GA4.</p>
+                </div>
+                @unless ($analyticsIsConnected)
+                    <nav class="inline-flex rounded-xl border border-slate-700 bg-slate-950 p-1" aria-label="Scegli intervallo Search Console">
+                        @foreach ([7, 28, 90] as $range)
+                            <a href="{{ route('sites.show', ['site' => $site, 'range' => $range]) }}" @if ($days === $range) aria-current="page" @endif class="rounded-lg px-4 py-2 text-sm font-semibold no-underline {{ $days === $range ? 'bg-emerald-400 text-slate-950' : 'text-slate-400 hover:text-white' }}">{{ $range }} giorni</a>
+                        @endforeach
+                    </nav>
+                @endunless
+            </div>
+
+            @unless ($searchIsConnected)
+                <p class="mt-6 text-sm text-slate-400">Search Console non è collegata. <a href="{{ route('sites.edit', $site) }}" class="font-medium text-sky-400">Gestisci il collegamento</a> per vedere impressioni, clic, CTR e posizione.</p>
+            @elseif ($searchReportError)
+                <div class="mt-6 rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-100" role="alert">{{ $searchReportError }}</div>
+            @elseif (! $searchOverview['has_data'])
+                <div class="mt-6 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">Search Console ha risposto, ma non ci sono dati finalizzati per questo host dal {{ $searchOverview['start_date'] }} al {{ $searchOverview['end_date'] }}. I valori assenti non sono mostrati come zero.</div>
+            @else
+                <p class="mt-5 text-xs text-slate-500">Dati finalizzati dal {{ $searchOverview['start_date'] }} al {{ $searchOverview['end_date'] }} (fuso Pacifico) · recuperati {{ \Carbon\CarbonImmutable::parse($searchOverview['fetched_at'])->format('d/m/Y H:i') }} · cache 1 ora</p>
+                <dl class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    @foreach (['clicks' => 'Clic', 'impressions' => 'Impressioni', 'ctr' => 'CTR', 'position' => 'Posizione media'] as $metric => $label)
+                        <div class="rounded-2xl border border-slate-700 bg-slate-950/60 p-5">
+                            <dt class="text-sm text-slate-400">{{ $label }}</dt>
+                            <dd class="mt-2 text-3xl font-semibold text-white">{{ $metric === 'ctr' ? $formatPercentage($searchOverview['summary'][$metric]) : ($metric === 'position' ? number_format($searchOverview['summary'][$metric], 1, ',', '.') : $formatNumber($searchOverview['summary'][$metric])) }}</dd>
+                        </div>
+                    @endforeach
+                </dl>
+                <div class="mt-7 grid gap-7 lg:grid-cols-2">
+                    @foreach (['pages' => 'Pagine più cliccate', 'queries' => 'Principali ricerche'] as $group => $heading)
+                        <div>
+                            <h3 class="font-semibold text-slate-100">{{ $heading }}</h3>
+                            <div class="mt-3 overflow-x-auto">
+                                <table class="w-full text-left text-sm">
+                                    <thead class="text-xs text-slate-500"><tr><th class="py-2 pr-3">{{ $group === 'pages' ? 'Percorso' : 'Ricerca' }}</th><th class="py-2 text-right">Clic</th><th class="py-2 pl-3 text-right">Impressioni</th></tr></thead>
+                                    <tbody class="divide-y divide-slate-800">
+                                        @forelse ($searchOverview[$group] as $row)
+                                            <tr><td class="max-w-xs break-all py-2 pr-3 text-slate-300">{{ $row['key'] }}</td><td class="py-2 text-right">{{ $formatNumber($row['clicks']) }}</td><td class="py-2 pl-3 text-right">{{ $formatNumber($row['impressions']) }}</td></tr>
+                                        @empty
+                                            <tr><td colspan="3" class="py-3 text-slate-500">Nessuna riga disponibile.</td></tr>
+                                        @endforelse
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+                <p class="mt-5 text-xs leading-5 text-slate-500">Le liste mostrano solo le prime righe per clic e non rappresentano necessariamente tutte le pagine o ricerche. Search Console e GA4 misurano fenomeni diversi e non vanno confrontati come totali equivalenti.</p>
+            @endif
+        </section>
     </main>
 @endsection

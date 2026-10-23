@@ -6,6 +6,7 @@ use App\Models\AiIntegration;
 use App\Models\AiUsageRecord;
 use App\Models\AnalyticsInsightReport;
 use App\Models\GoogleAnalyticsConnection;
+use App\Models\GoogleSearchConsoleConnection;
 use App\Models\Site;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -133,6 +134,87 @@ class AnalyticsInsightTest extends TestCase
         $this->assertDatabaseCount('analytics_insight_reports', 1);
         $this->assertDatabaseCount('ai_usage_records', 1);
         Http::assertSentCount(3);
+    }
+
+    public function test_connected_search_console_data_is_included_in_the_encrypted_ai_snapshot(): void
+    {
+        Http::fake([
+            'https://analyticsdata.googleapis.com/*' => Http::sequence()
+                ->push($this->overviewPayload())
+                ->push($this->insightPayload()),
+            'https://www.googleapis.com/webmasters/v3/sites/*/searchAnalytics/query' => Http::sequence()
+                ->push(['rows' => [['clicks' => 80, 'impressions' => 2000, 'ctr' => 0.04, 'position' => 7.2]]])
+                ->push(['rows' => [['keys' => ['2026-10-19'], 'clicks' => 8, 'impressions' => 200, 'ctr' => 0.04, 'position' => 7.2]]])
+                ->push(['rows' => [['keys' => ['https://analytics.example.test/articles/example?private=1'], 'clicks' => 50, 'impressions' => 1200, 'ctr' => 0.04, 'position' => 6.2]]])
+                ->push(['rows' => [
+                    ['keys' => ['example topic'], 'clicks' => 20, 'impressions' => 500, 'ctr' => 0.04, 'position' => 8.1],
+                    ['keys' => ['person@example.test'], 'clicks' => 20, 'impressions' => 500, 'ctr' => 0.04, 'position' => 8.1],
+                ]]),
+            'https://api.openai.com/v1/responses' => Http::response([
+                'output' => [[
+                    'type' => 'message',
+                    'content' => [['type' => 'output_text', 'text' => json_encode($this->analysis())]],
+                ]],
+                'usage' => ['input_tokens' => 100, 'output_tokens' => 50, 'total_tokens' => 150],
+            ]),
+        ]);
+
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create([
+            'host' => 'analytics.example.test',
+            'base_url' => 'https://analytics.example.test',
+        ]);
+        $this->connectAnalytics($admin, $site);
+        $this->connectSearchConsole($admin, $site);
+        $this->createAiIntegration($admin);
+
+        $this->actingAs($admin)
+            ->post(route('sites.analytics-insights.store', $site), ['range' => 28])
+            ->assertSessionHas('analytics_insight_status', 'Analisi AI completata e salvata.');
+
+        $snapshot = AnalyticsInsightReport::query()->sole()->source_snapshot;
+        $this->assertSame('available', data_get($snapshot, 'search_console.status'));
+        $this->assertSame(80, data_get($snapshot, 'search_console.summary.clicks'));
+        $this->assertSame('/articles/example', data_get($snapshot, 'search_console.top_pages.0.key'));
+        $this->assertSame('example topic', data_get($snapshot, 'search_console.top_queries.0.key'));
+        $this->assertCount(1, data_get($snapshot, 'search_console.top_queries'));
+        $this->assertStringNotContainsString('example topic', (string) DB::table('analytics_insight_reports')->value('source_snapshot'));
+
+        Http::assertSent(function (Request $request): bool {
+            return $request->url() === 'https://api.openai.com/v1/responses'
+                && str_contains((string) json_encode($request->data()), 'example topic')
+                && ! str_contains((string) json_encode($request->data()), 'person@example.test')
+                && ! str_contains((string) json_encode($request->data()), 'private=1');
+        });
+    }
+
+    public function test_search_console_failure_is_explicit_and_does_not_prevent_ga4_analysis(): void
+    {
+        Http::fake([
+            'https://analyticsdata.googleapis.com/*' => Http::sequence()
+                ->push($this->overviewPayload())
+                ->push($this->insightPayload()),
+            'https://www.googleapis.com/webmasters/v3/sites/*/searchAnalytics/query' => Http::response(['error' => ['code' => 429]], 429),
+            'https://api.openai.com/v1/responses' => Http::response([
+                'output' => [[
+                    'type' => 'message',
+                    'content' => [['type' => 'output_text', 'text' => json_encode($this->analysis())]],
+                ]],
+                'usage' => ['input_tokens' => 100, 'output_tokens' => 50, 'total_tokens' => 150],
+            ]),
+        ]);
+
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
+        $this->connectAnalytics($admin, $site);
+        $this->connectSearchConsole($admin, $site);
+        $this->createAiIntegration($admin);
+
+        $this->actingAs($admin)
+            ->post(route('sites.analytics-insights.store', $site), ['range' => 28])
+            ->assertSessionHas('analytics_insight_status', 'Analisi AI completata e salvata.');
+
+        $this->assertSame('unavailable', data_get(AnalyticsInsightReport::query()->sole()->source_snapshot, 'search_console.status'));
     }
 
     public function test_analysis_requires_a_verified_ai_integration(): void
@@ -290,6 +372,26 @@ class AnalyticsInsightTest extends TestCase
             'account_id' => '123456',
             'property_id' => '987654',
             'property_name' => 'Synthetic Property',
+            'last_verified_at' => now(),
+        ]);
+    }
+
+    private function connectSearchConsole(User $admin, Site $site): void
+    {
+        $connection = GoogleSearchConsoleConnection::query()->create([
+            'authorized_by_user_id' => $admin->id,
+            'access_token' => 'search-access-token',
+            'refresh_token' => 'search-refresh-token',
+            'token_expires_at' => now()->addHour(),
+            'scopes' => ['https://www.googleapis.com/auth/webmasters.readonly'],
+            'status' => 'active',
+        ]);
+
+        $site->googleSearchConsoleProperty()->create([
+            'google_search_console_connection_id' => $connection->id,
+            'property_url' => 'sc-domain:example.test',
+            'property_type' => 'domain',
+            'permission_level' => 'siteOwner',
             'last_verified_at' => now(),
         ]);
     }

@@ -99,7 +99,7 @@ Documentazione ufficiale:
 
 ## Collegamento Google Search Console
 
-Search Console è un’integrazione opzionale per sito. Usa OAuth 2.0 con il solo scope `webmasters.readonly`; credenziali, access token e refresh token vengono cifrati prima del salvataggio. Questa prima versione collega e verifica la proprietà: l’importazione di query, clic, impressioni, CTR e posizione media verrà aggiunta al livello di reporting in un incremento successivo.
+Search Console è un’integrazione opzionale per sito. Usa OAuth 2.0 con il solo scope `webmasters.readonly`; credenziali, access token e refresh token vengono cifrati prima del salvataggio. Dopo il collegamento, la panoramica legge on-demand clic, impressioni, CTR e posizione media tramite Search Analytics, più le prime pagine e query per clic. Il report usa dati finalizzati, termina tre giorni prima della data corrente nel fuso Pacifico, filtra le pagine per l’host registrato e resta in cache per un’ora. Le liste non sono esaustive; dati mancanti ed errori non vengono mostrati come zero. L’analisi AI include Search Console se disponibile, ma richiede ancora dati GA4 e non genera automaticamente un piano editoriale.
 
 La procedura completa e i valori esatti da copiare sono disponibili in **Gestisci sito → Google Search Console → Configura Search Console**. In sintesi:
 
