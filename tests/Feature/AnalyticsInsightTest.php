@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\RunAnalyticsInsight;
 use App\Models\AiIntegration;
 use App\Models\AiUsageRecord;
 use App\Models\AnalyticsInsightReport;
@@ -14,6 +15,7 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class AnalyticsInsightTest extends TestCase
@@ -61,7 +63,7 @@ class AnalyticsInsightTest extends TestCase
         $this->actingAs($admin)
             ->post(route('sites.analytics-insights.store', $site), ['range' => 28])
             ->assertRedirect(route('sites.show', ['site' => $site, 'range' => 28]))
-            ->assertSessionHas('analytics_insight_status', 'Analisi AI completata e salvata.');
+            ->assertSessionHas('analytics_insight_status', 'Analisi AI accodata. Ricarica la pagina tra poco per vedere il risultato.');
 
         $report = AnalyticsInsightReport::query()->sole();
         $this->assertSame('Il traffico cresce, ma va verificata la qualità delle visite.', $report->analysis['summary']);
@@ -129,7 +131,7 @@ class AnalyticsInsightTest extends TestCase
         $this->actingAs($admin)->post(route('sites.analytics-insights.store', $site), ['range' => 28]);
         $this->actingAs($admin)
             ->post(route('sites.analytics-insights.store', $site), ['range' => 28])
-            ->assertSessionHas('analytics_insight_status', 'I dati non sono cambiati: mostro l’analisi già disponibile senza effettuare una nuova chiamata AI.');
+            ->assertSessionHas('analytics_insight_status', 'Analisi AI accodata. Ricarica la pagina tra poco per vedere il risultato.');
 
         $this->assertDatabaseCount('analytics_insight_reports', 1);
         $this->assertDatabaseCount('ai_usage_records', 1);
@@ -170,7 +172,7 @@ class AnalyticsInsightTest extends TestCase
 
         $this->actingAs($admin)
             ->post(route('sites.analytics-insights.store', $site), ['range' => 28])
-            ->assertSessionHas('analytics_insight_status', 'Analisi AI completata e salvata.');
+            ->assertSessionHas('analytics_insight_status', 'Analisi AI accodata. Ricarica la pagina tra poco per vedere il risultato.');
 
         $snapshot = AnalyticsInsightReport::query()->sole()->source_snapshot;
         $this->assertSame('available', data_get($snapshot, 'search_console.status'));
@@ -212,7 +214,7 @@ class AnalyticsInsightTest extends TestCase
 
         $this->actingAs($admin)
             ->post(route('sites.analytics-insights.store', $site), ['range' => 28])
-            ->assertSessionHas('analytics_insight_status', 'Analisi AI completata e salvata.');
+            ->assertSessionHas('analytics_insight_status', 'Analisi AI accodata. Ricarica la pagina tra poco per vedere il risultato.');
 
         $this->assertSame('unavailable', data_get(AnalyticsInsightReport::query()->sole()->source_snapshot, 'search_console.status'));
     }
@@ -231,6 +233,23 @@ class AnalyticsInsightTest extends TestCase
             ->assertSessionHas('analytics_insight_error', 'L’integrazione AI attiva deve essere verificata prima di generare l’analisi.');
 
         Http::assertNothingSent();
+    }
+
+    public function test_analysis_is_queued_once_without_provider_calls_in_the_web_request(): void
+    {
+        Queue::fake();
+        Http::preventStrayRequests();
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
+        $this->connectAnalytics($admin, $site);
+        $this->createAiIntegration($admin);
+
+        $this->actingAs($admin)->post(route('sites.analytics-insights.store', $site), ['range' => 28])->assertRedirect();
+        $this->actingAs($admin)->post(route('sites.analytics-insights.store', $site), ['range' => 28])->assertRedirect();
+
+        Queue::assertPushed(RunAnalyticsInsight::class, 1);
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('analytics_insight_reports', 0);
     }
 
     /** @return array<string, mixed> */

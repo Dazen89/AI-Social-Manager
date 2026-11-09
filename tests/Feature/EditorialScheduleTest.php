@@ -64,8 +64,11 @@ class EditorialScheduleTest extends TestCase
             'https://api.openai.com/v1/responses' => Http::response([
                 'id' => 'resp_scheduled_test',
                 'output' => [['type' => 'message', 'content' => [['type' => 'output_text', 'text' => json_encode([
-                    'cadence' => ['posts_per_week' => 2, 'confidence' => 'low', 'rationale' => 'Dati non disponibili; provare due post a settimana.'],
-                    'proposals' => [['content_id' => 1, 'post_text' => 'Nuova uscita disponibile.', 'rationale' => 'Uscita recente; dati di traffico non disponibili.', 'day_offset' => 1, 'hour' => 18]],
+                    'cadence' => ['posts_per_week' => 7, 'confidence' => 'low', 'rationale' => 'Dati non disponibili; mantenere il piano giornaliero.'],
+                    'proposals' => [
+                        ['content_id' => 2, 'post_text' => 'Nuova uscita disponibile.', 'rationale' => 'Uscita recente; dati di traffico non disponibili.', 'day_offset' => 1, 'hour' => 18],
+                        ['content_id' => 1, 'post_text' => 'Dal nostro archivio.', 'rationale' => 'Lavoro storico usato per completare il piano giornaliero.', 'day_offset' => 2, 'hour' => 18],
+                    ],
                 ])]]]],
                 'usage' => ['input_tokens' => 80, 'output_tokens' => 40, 'total_tokens' => 120],
             ]),
@@ -74,17 +77,17 @@ class EditorialScheduleTest extends TestCase
         $this->artisan('editorial:run-due')->assertSuccessful();
 
         $this->assertDatabaseCount('editorial_contents', 2);
-        $this->assertDatabaseCount('editorial_proposals', 1);
+        $this->assertDatabaseCount('editorial_proposals', 2);
         $this->assertDatabaseCount('editorial_cadence_recommendations', 1);
         $this->assertSame('pending', EditorialContent::query()->firstOrFail()->eligibility_status);
         $schedule = $site->editorialSchedule->fresh();
         $this->assertNull($schedule->last_error);
         $this->assertSame(2, $schedule->last_imported_count);
-        $this->assertSame(1, $schedule->last_proposal_count);
+        $this->assertSame(2, $schedule->last_proposal_count);
         $this->assertSame('2026-10-24 07:00:00', $schedule->next_run_at->format('Y-m-d H:i:s'));
         $this->actingAs($admin)->get(route('sites.editorial-plan.show', ['site' => $site, 'month' => '2026-10']))
             ->assertOk()->assertSee('Uscita recente; dati di traffico non disponibili.')->assertSee('Bozza')
-            ->assertSee('2 post a settimana')->assertSee('metriche dei post X non ancora raccolte');
+            ->assertSee('7 post a settimana')->assertSee('metriche dei post X non ancora raccolte');
         $this->artisan('editorial:run-due')->assertSuccessful();
         Http::assertSentCount(3);
     }

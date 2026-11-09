@@ -202,6 +202,10 @@
                         @endif
                     </div>
 
+                    @if ($insightJobStatus ?? null)
+                        <div class="mt-5 ui-alert ui-tone-accent" role="status">{{ $insightJobStatus['message'] }}</div>
+                    @endif
+
                     @if (session('analytics_insight_status'))
                         <div class="mt-5 ui-alert ui-tone-success" role="status">{{ session('analytics_insight_status') }}</div>
                     @endif

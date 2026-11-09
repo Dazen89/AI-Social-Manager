@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\RunEditorialAnalysis;
 use App\Models\AiIntegration;
 use App\Models\Site;
 use App\Models\XConnection;
-use App\Services\EditorialScheduleRunner;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -14,20 +14,19 @@ use Illuminate\Validation\ValidationException;
 
 class EditorialScheduleController extends Controller
 {
-    public function runNow(Site $site, EditorialScheduleRunner $runner): RedirectResponse
+    public function runNow(Site $site): RedirectResponse
     {
         if (! $site->is_active) {
             return back()->with('workflow_error', 'Attiva il sito prima di avviare il controllo.');
         }
 
-        if (! $runner->runNow($site)) {
+        if ($site->editorialSchedule?->running_started_at?->isAfter(now()->subMinutes(10))) {
             return back()->with('workflow_error', 'Un controllo è già in corso. Attendi il suo completamento.');
         }
 
-        $schedule = $site->editorialSchedule()->firstOrFail();
+        RunEditorialAnalysis::dispatch($site->id);
 
-        return back()->with($schedule->last_error ? 'workflow_error' : 'status', $schedule->last_error
-            ?: "Controllo completato: {$schedule->last_imported_count} nuove uscite, {$schedule->last_proposal_count} post proposti. L’AI ha rivalutato anche i capitoli già noti.");
+        return back()->with('status', 'Analisi avviata in background. Il calendario si aggiornerà al completamento; puoi continuare a usare la dashboard.');
     }
 
     public function update(Request $request, Site $site): RedirectResponse

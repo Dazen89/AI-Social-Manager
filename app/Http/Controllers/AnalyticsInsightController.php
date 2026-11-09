@@ -2,17 +2,16 @@
 
 namespace App\Http\Controllers;
 
-use App\Exceptions\AiServiceException;
-use App\Exceptions\GoogleAnalyticsException;
+use App\Jobs\RunAnalyticsInsight;
 use App\Models\AiIntegration;
 use App\Models\Site;
-use App\Services\AnalyticsInsightService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class AnalyticsInsightController extends Controller
 {
-    public function store(Request $request, Site $site, AnalyticsInsightService $insights): RedirectResponse
+    public function store(Request $request, Site $site): RedirectResponse
     {
         $validated = $request->validate([
             'range' => ['required', 'integer', 'in:7,28,90'],
@@ -32,19 +31,22 @@ class AnalyticsInsightController extends Controller
             return $this->failure($site, $days, 'Configura e attiva un’integrazione AI prima di generare l’analisi.');
         }
 
-        try {
-            $result = $insights->generate($site, $property, $integration, $days);
-        } catch (AiServiceException|GoogleAnalyticsException $exception) {
-            return $this->failure($site, $days, $exception->getMessage());
+        if ($integration->status !== 'verified') {
+            return $this->failure($site, $days, 'L’integrazione AI attiva deve essere verificata prima di generare l’analisi.');
         }
 
-        $message = $result['reused']
-            ? 'I dati non sono cambiati: mostro l’analisi già disponibile senza effettuare una nuova chiamata AI.'
-            : 'Analisi AI completata e salvata.';
+        $key = RunAnalyticsInsight::statusKey($site->id, $days);
+        if (Cache::add($key, ['state' => 'pending', 'message' => 'Analisi AI in attesa o in corso. Ricarica la pagina tra poco per vedere il risultato.'], now()->addMinutes(10))) {
+            RunAnalyticsInsight::dispatch($site->id, $integration->id, $days);
+        } elseif (data_get(Cache::get($key), 'state') !== 'pending') {
+            Cache::forget($key);
+            Cache::put($key, ['state' => 'pending', 'message' => 'Analisi AI in attesa o in corso. Ricarica la pagina tra poco per vedere il risultato.'], now()->addMinutes(10));
+            RunAnalyticsInsight::dispatch($site->id, $integration->id, $days);
+        }
 
         return redirect()
             ->route('sites.show', ['site' => $site, 'range' => $days])
-            ->with('analytics_insight_status', $message);
+            ->with('analytics_insight_status', 'Analisi AI accodata. Ricarica la pagina tra poco per vedere il risultato.');
     }
 
     private function failure(Site $site, int $days, string $message): RedirectResponse

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\RunEditorialAnalysis;
 use App\Models\AiIntegration;
 use App\Models\EditorialContent;
 use App\Models\EditorialSource;
@@ -10,6 +11,7 @@ use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class EditorialWorkflowTest extends TestCase
@@ -71,12 +73,13 @@ class EditorialWorkflowTest extends TestCase
         $source = $this->source($site);
         $eligible = $this->content($site, $source, '1');
         $pending = $this->content($site, $source, '2');
+        $pending->update(['eligibility_status' => 'excluded']);
         $this->ai($admin);
         Http::preventStrayRequests();
         Http::fake(['https://api.openai.com/v1/responses' => Http::response([
             'id' => 'resp_editorial_test',
             'output' => [['type' => 'message', 'content' => [['type' => 'output_text', 'text' => json_encode([
-                'cadence' => ['posts_per_week' => 2, 'confidence' => 'low', 'rationale' => 'Dati GA4, Search Console e X assenti: iniziare con due post settimanali e misurare.'],
+                'cadence' => ['posts_per_week' => 7, 'confidence' => 'low', 'rationale' => 'Dati GA4, Search Console e X assenti: mantenere il piano giornaliero e misurare.'],
                 'proposals' => [['content_id' => $eligible->id, 'post_text' => 'Nuova uscita disponibile.', 'rationale' => 'Uscita recente; dati di performance non disponibili.', 'day_offset' => 1, 'hour' => 18]],
             ])]]]],
             'usage' => ['input_tokens' => 80, 'output_tokens' => 40, 'total_tokens' => 120],
@@ -86,7 +89,7 @@ class EditorialWorkflowTest extends TestCase
             ->assertSessionHas('status');
 
         $proposal = $eligible->proposal()->sole();
-        $this->assertSame(2, $site->editorialCadenceRecommendations()->sole()->posts_per_week);
+        $this->assertSame(7, $site->editorialCadenceRecommendations()->sole()->posts_per_week);
         $this->assertSame('low', $site->editorialCadenceRecommendations()->sole()->confidence);
         $this->assertSame('draft', $proposal->status);
         $this->assertStringEndsWith($eligible->public_url, $proposal->post_text);
@@ -100,7 +103,7 @@ class EditorialWorkflowTest extends TestCase
         $this->assertSame('approved', $proposal->fresh()->status);
         $this->actingAs($admin)->get(route('sites.editorial-plan.show', $site))
             ->assertOk()->assertSee('Nuova uscita disponibile.')->assertSee('Approvata')
-            ->assertSee('Frequenza dei post suggerita dall’AI')->assertSee('iniziare con due post settimanali');
+            ->assertSee('Cadenza editoriale giornaliera')->assertSee('mantenere il piano giornaliero');
         Http::assertSentCount(1);
         Http::assertSent(fn ($request) => $request->url() === 'https://api.openai.com/v1/responses');
     }
@@ -116,7 +119,7 @@ class EditorialWorkflowTest extends TestCase
         Http::fake(['https://api.openai.com/v1/responses' => Http::response([
             'id' => 'resp_italian_confidence_test',
             'output' => [['type' => 'message', 'content' => [['type' => 'output_text', 'text' => json_encode([
-                'cadence' => ['posts_per_week' => 2, 'confidence' => 'Bassa', 'rationale' => 'I dati disponibili non bastano per una stima affidabile.'],
+                'cadence' => ['posts_per_week' => 7, 'confidence' => 'Bassa', 'rationale' => 'I dati disponibili non bastano per una stima affidabile.'],
                 'proposals' => [['content_id' => $content->id, 'post_text' => 'Nuovo capitolo disponibile.', 'rationale' => 'Uscita recente.', 'day_offset' => 1, 'hour' => 18]],
             ])]]]],
             'usage' => ['input_tokens' => 30, 'output_tokens' => 15, 'total_tokens' => 45],
@@ -128,7 +131,10 @@ class EditorialWorkflowTest extends TestCase
         $this->assertSame('low', $site->editorialCadenceRecommendations()->sole()->confidence);
         $this->assertSame('draft', $content->proposal()->sole()->status);
         Http::assertSent(fn ($request) => data_get($request->data(), 'text.format.schema.properties.cadence.properties.confidence.enum') === ['low', 'medium', 'high']);
-        Http::assertSent(fn ($request) => data_get($request->data(), 'text.format.schema.properties.proposals.items.properties.content_id.enum') === [$content->id]
+        Http::assertSent(fn ($request) => data_get($request->data(), 'text.format.schema.properties.cadence.properties.posts_per_week.enum') === [7]
+            && data_get($request->data(), 'text.format.schema.properties.proposals.minItems') === 1
+            && data_get($request->data(), 'text.format.schema.properties.proposals.maxItems') === 1
+            && data_get($request->data(), 'text.format.schema.properties.proposals.items.properties.content_id.enum') === [$content->id]
             && data_get($request->data(), 'text.format.schema.properties.proposals.items.properties.day_offset.enum') === range(1, 14)
             && data_get($request->data(), 'text.format.schema.properties.proposals.items.properties.hour.enum') === range(8, 22));
     }
@@ -151,7 +157,87 @@ class EditorialWorkflowTest extends TestCase
         ])]);
 
         $this->actingAs($admin)->post(route('sites.editorial-plan.proposals.generate', $site))
-            ->assertSessionHas('workflow_error', 'Il servizio AI ha proposto un numero di post settimanali fuori dall’intervallo 1-7. Nessuna bozza è stata salvata.');
+            ->assertSessionHas('workflow_error', 'Il servizio AI non ha rispettato la cadenza giornaliera di 7 post a settimana. Nessuna bozza è stata salvata.');
+
+        $this->assertDatabaseCount('editorial_cadence_recommendations', 0);
+        $this->assertDatabaseCount('editorial_proposals', 0);
+    }
+
+    public function test_daily_plan_prioritizes_recent_releases_and_fills_fourteen_days_with_older_work(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-06 10:00:00', 'UTC'));
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
+        $source = $this->source($site);
+        $contents = collect(range(1, 14))->map(function (int $number) use ($site, $source): EditorialContent {
+            $content = $this->content($site, $source, (string) $number);
+            $content->update(['released_at' => now()->subDays($number)]);
+
+            return $content;
+        });
+        $expectedIds = $contents->pluck('id')->all();
+        $this->ai($admin);
+        Http::preventStrayRequests();
+        Http::fake(['https://api.openai.com/v1/responses' => Http::response([
+            'id' => 'resp_daily_plan_test',
+            'output' => [['type' => 'message', 'content' => [['type' => 'output_text', 'text' => json_encode([
+                'cadence' => ['posts_per_week' => 7, 'confidence' => 'low', 'rationale' => 'Piano giornaliero; metriche non disponibili.'],
+                'proposals' => $contents->values()->map(fn (EditorialContent $content, int $index): array => [
+                    'content_id' => $content->id,
+                    'post_text' => 'Lavoro disponibile '.$content->external_id.'.',
+                    'rationale' => $index === 0 ? 'Uscita più recente.' : 'Archivio ordinato per data di uscita.',
+                    'day_offset' => $index + 1,
+                    'hour' => 18,
+                ])->all(),
+            ])]]]],
+            'usage' => ['input_tokens' => 200, 'output_tokens' => 100, 'total_tokens' => 300],
+        ])]);
+
+        $this->actingAs($admin)->post(route('sites.editorial-plan.proposals.generate', $site))
+            ->assertSessionHas('status');
+
+        $this->assertDatabaseCount('editorial_proposals', 14);
+        $this->assertSame(7, $site->editorialCadenceRecommendations()->sole()->posts_per_week);
+        $this->assertSame(
+            $expectedIds,
+            $site->editorialProposals()->orderBy('proposed_for')->pluck('editorial_content_id')->all(),
+        );
+        $this->assertCount(
+            14,
+            $site->editorialProposals()->get()->map(fn ($proposal) => $proposal->proposed_for->toDateString())->unique(),
+        );
+        Http::assertSent(fn ($request) => data_get($request->data(), 'text.format.schema.properties.proposals.minItems') === 14
+            && data_get($request->data(), 'text.format.schema.properties.proposals.maxItems') === 14
+            && data_get($request->data(), 'text.format.schema.properties.proposals.items.properties.content_id.enum') === $expectedIds);
+    }
+
+    public function test_incomplete_daily_plan_is_rejected_without_saving_drafts(): void
+    {
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
+        $source = $this->source($site);
+        $older = $this->content($site, $source, '1');
+        $newer = $this->content($site, $source, '2');
+        $older->update(['released_at' => now()->subDay()]);
+        $this->ai($admin);
+        Http::preventStrayRequests();
+        Http::fake(['https://api.openai.com/v1/responses' => Http::response([
+            'id' => 'resp_incomplete_daily_plan_test',
+            'output' => [['type' => 'message', 'content' => [['type' => 'output_text', 'text' => json_encode([
+                'cadence' => ['posts_per_week' => 7, 'confidence' => 'low', 'rationale' => 'Piano giornaliero.'],
+                'proposals' => [[
+                    'content_id' => $newer->id,
+                    'post_text' => 'Nuova uscita disponibile.',
+                    'rationale' => 'Uscita recente.',
+                    'day_offset' => 1,
+                    'hour' => 18,
+                ]],
+            ])]]]],
+            'usage' => ['input_tokens' => 30, 'output_tokens' => 15, 'total_tokens' => 45],
+        ])]);
+
+        $this->actingAs($admin)->post(route('sites.editorial-plan.proposals.generate', $site))
+            ->assertSessionHas('workflow_error', 'Il servizio AI non ha coperto tutti i giorni disponibili del piano editoriale. Nessuna bozza è stata salvata.');
 
         $this->assertDatabaseCount('editorial_cadence_recommendations', 0);
         $this->assertDatabaseCount('editorial_proposals', 0);
@@ -168,7 +254,7 @@ class EditorialWorkflowTest extends TestCase
         $response = fn (int $id, int $offset): array => [
             'id' => 'resp_invalid_proposal_test',
             'output' => [['type' => 'message', 'content' => [['type' => 'output_text', 'text' => json_encode([
-                'cadence' => ['posts_per_week' => 2, 'confidence' => 'low', 'rationale' => 'Test prudente.'],
+                'cadence' => ['posts_per_week' => 7, 'confidence' => 'low', 'rationale' => 'Test prudente.'],
                 'proposals' => [['content_id' => $id, 'post_text' => 'Nuovo capitolo disponibile.', 'rationale' => 'Uscita recente.', 'day_offset' => $offset, 'hour' => 18]],
             ])]]]],
             'usage' => ['input_tokens' => 30, 'output_tokens' => 15, 'total_tokens' => 45],
@@ -248,7 +334,7 @@ class EditorialWorkflowTest extends TestCase
         $admin = User::factory()->administrator()->create();
         $site = Site::factory()->create();
         $source = $this->source($site);
-        $this->content($site, $source, '12');
+        $content = $this->content($site, $source, '12');
         $this->ai($admin);
         Http::preventStrayRequests();
         Http::fake([
@@ -257,8 +343,8 @@ class EditorialWorkflowTest extends TestCase
             'https://api.openai.com/v1/responses' => Http::response([
                 'id' => 'resp_manual_test',
                 'output' => [['type' => 'message', 'content' => [['type' => 'output_text', 'text' => json_encode([
-                    'cadence' => ['posts_per_week' => 1, 'confidence' => 'low', 'rationale' => 'Nessun dato di performance: attendere evidenze.'],
-                    'proposals' => [],
+                    'cadence' => ['posts_per_week' => 7, 'confidence' => 'low', 'rationale' => 'Nessun dato di performance: mantenere il piano giornaliero e misurare.'],
+                    'proposals' => [['content_id' => $content->id, 'post_text' => 'Capitolo disponibile.', 'rationale' => 'Unico lavoro disponibile.', 'day_offset' => 1, 'hour' => 18]],
                 ])]]]],
                 'usage' => ['input_tokens' => 30, 'output_tokens' => 15, 'total_tokens' => 45],
             ]),
@@ -272,6 +358,19 @@ class EditorialWorkflowTest extends TestCase
         $this->assertDatabaseCount('ai_usage_records', 2);
         $this->assertNotNull($site->editorialSchedule()->firstOrFail()->last_run_at);
         Http::assertSentCount(6);
+    }
+
+    public function test_manual_analysis_is_queued_without_holding_open_the_web_request(): void
+    {
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
+        Queue::fake();
+
+        $this->actingAs($admin)->post(route('sites.editorial-plan.run', $site))
+            ->assertSessionHas('status', 'Analisi avviata in background. Il calendario si aggiornerà al completamento; puoi continuare a usare la dashboard.');
+
+        Queue::assertPushed(RunEditorialAnalysis::class, fn (RunEditorialAnalysis $job): bool => $job->siteId === $site->id);
+        $this->assertDatabaseCount('editorial_schedules', 0);
     }
 
     public function test_ai_automatically_approves_an_authorized_source_when_publication_is_enabled(): void
@@ -291,7 +390,7 @@ class EditorialWorkflowTest extends TestCase
         Http::fake(['https://api.openai.com/v1/responses' => Http::response([
             'id' => 'resp_auto_approval_test',
             'output' => [['type' => 'message', 'content' => [['type' => 'output_text', 'text' => json_encode([
-                'cadence' => ['posts_per_week' => 1, 'confidence' => 'low', 'rationale' => 'Test prudente.'],
+                'cadence' => ['posts_per_week' => 7, 'confidence' => 'low', 'rationale' => 'Test prudente.'],
                 'proposals' => [['content_id' => $content->id, 'post_text' => 'Capitolo disponibile.', 'rationale' => 'Uscita recente.', 'day_offset' => 1, 'hour' => 18]],
             ])]]]],
             'usage' => ['input_tokens' => 30, 'output_tokens' => 15, 'total_tokens' => 45],

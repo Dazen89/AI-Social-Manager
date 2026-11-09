@@ -5,11 +5,13 @@ namespace App\Http\Controllers;
 use App\Exceptions\GoogleAnalyticsException;
 use App\Exceptions\GoogleAnalyticsReportException;
 use App\Exceptions\GoogleSearchConsoleException;
+use App\Jobs\RunAnalyticsInsight;
 use App\Models\AiIntegration;
 use App\Models\Site;
 use App\Services\GoogleAnalyticsReportService;
 use App\Services\GoogleSearchConsoleReportService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\View\View;
 
 class SiteAnalyticsOverviewController extends Controller
@@ -54,6 +56,7 @@ class SiteAnalyticsOverviewController extends Controller
             'searchOverview' => $searchOverview,
             'searchReportError' => $searchReportError,
             'days' => $days,
+            'insightJobStatus' => Cache::get(RunAnalyticsInsight::statusKey($site->id, $days)),
             'activeAiIntegration' => AiIntegration::query()
                 ->where('active_marker', 'active')
                 ->first(),

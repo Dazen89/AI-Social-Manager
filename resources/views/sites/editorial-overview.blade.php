@@ -21,7 +21,7 @@
             <form method="POST" action="{{ route('sites.editorial-plan.run', $site) }}" class="ui-actions mt-4">
                 @csrf
                 <button type="submit" class="ui-button ui-button-primary">Analizza ora</button>
-                <span class="text-xs text-muted">Legge le fonti e chiama il servizio AI configurato.</span>
+                <span class="text-xs text-muted">Avvia in background la lettura delle fonti e l’analisi AI; il calendario si aggiorna al completamento.</span>
             </form>
             @unless ($schedule)
                 <p class="mt-4 ui-alert ui-tone-warning" role="status">Non hai ancora attivato i controlli periodici. Puoi comunque usare “Analizza ora” per creare il piano senza attendere lo Scheduler.</p>
@@ -67,13 +67,13 @@
         </section>
 
         <section class="ui-panel mt-8 p-6 sm:p-8" aria-labelledby="cadence-heading">
-            <h2 id="cadence-heading" class="text-xl font-semibold">Frequenza dei post suggerita dall’AI</h2>
+            <h2 id="cadence-heading" class="text-xl font-semibold">Cadenza editoriale giornaliera</h2>
             @if ($cadence)
-                <p class="mt-3 text-lg font-semibold text-accent-ink">{{ $cadence->posts_per_week }} post a settimana <span class="text-sm font-normal text-muted">· fiducia {{ match ($cadence->confidence) { 'high' => 'alta', 'medium' => 'media', default => 'bassa' } }} · ipotesi, non programmazione</span></p>
+                <p class="mt-3 text-lg font-semibold text-accent-ink">{{ $cadence->posts_per_week }} post a settimana <span class="text-sm font-normal text-muted">· un post al giorno · fiducia dell’analisi {{ match ($cadence->confidence) { 'high' => 'alta', 'medium' => 'media', default => 'bassa' } }}</span></p>
                 <p class="mt-3 text-sm text-soft"><span class="font-semibold">Perché:</span> {{ $cadence->rationale }}</p>
                 <p class="mt-3 text-xs text-muted">Analisi del {{ $cadence->generated_at->setTimezone($timezone)->format('d/m/Y H:i') }}. {{ ($cadence->source_snapshot['google_analytics']['status'] ?? null) === 'available' ? 'GA4 disponibile' : 'GA4 non disponibile' }} · {{ ($cadence->source_snapshot['search_console']['status'] ?? null) === 'available' ? 'Search Console disponibile' : 'Search Console non disponibile' }} · {{ ($cadence->source_snapshot['x_post_metrics']['status'] ?? null) === 'available' ? 'Metriche dei post X disponibili' : 'metriche dei post X non ancora raccolte' }}.</p>
             @else
-                <p class="mt-3 text-sm text-muted">Nessuna ipotesi ancora disponibile. La prima analisi AI partirà quando il piano automatico sarà attivo, lo Scheduler avrà eseguito un controllo e saranno presenti uscite candidabili. Le metriche dei post X non sono ancora raccolte.</p>
+                <p class="mt-3 text-sm text-muted">Il piano prevede un post al giorno. La prima analisi AI partirà quando il piano automatico sarà attivo, lo Scheduler avrà eseguito un controllo e saranno presenti capitoli candidabili. Le metriche dei post X non sono ancora raccolte.</p>
             @endif
         </section>
 
