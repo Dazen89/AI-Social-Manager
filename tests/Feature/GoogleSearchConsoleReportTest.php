@@ -104,6 +104,73 @@ class GoogleSearchConsoleReportTest extends TestCase
             ->assertSee('Quota Search Console temporaneamente esaurita');
     }
 
+    public function test_temporary_refresh_failure_preserves_the_connection_and_allows_a_later_retry(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://oauth2.googleapis.com/token' => Http::sequence()
+                ->push(['error' => 'temporarily_unavailable'], 503)
+                ->push(['access_token' => 'renewed-token', 'expires_in' => 3600]),
+            'https://www.googleapis.com/webmasters/v3/sites/*/searchAnalytics/query' => Http::response([]),
+        ]);
+        [$admin, $site] = $this->connectedSite();
+        $connection = $site->googleSearchConsoleProperty->connection;
+        $connection->update(['token_expires_at' => now()->subMinute()]);
+
+        $this->actingAs($admin)->get(route('sites.show', $site))
+            ->assertOk()
+            ->assertSee('Il rinnovo Search Console è temporaneamente indisponibile');
+
+        $this->assertSame('active', $connection->fresh()->status);
+
+        $this->get(route('sites.show', $site))->assertOk()->assertSee('non ci sono dati finalizzati');
+        $this->assertSame('renewed-token', $connection->fresh()->access_token);
+        Http::assertSentCount(3);
+    }
+
+    public function test_site_overview_can_recover_a_connection_with_a_previous_generic_refresh_error(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'renewed-token']),
+            'https://www.googleapis.com/webmasters/v3/sites/*/searchAnalytics/query' => Http::response([]),
+        ]);
+        [$admin, $site] = $this->connectedSite();
+        $connection = $site->googleSearchConsoleProperty->connection;
+        $connection->update([
+            'token_expires_at' => now()->subMinute(),
+            'status' => 'error',
+            'last_error' => 'L’autorizzazione Google non può essere rinnovata.',
+        ]);
+
+        $this->actingAs($admin)->get(route('sites.edit', $site))->assertOk()
+            ->assertSee('Apri la panoramica per riprovare');
+        $this->get(route('sites.show', $site))->assertOk()->assertSee('non ci sono dati finalizzati');
+
+        $this->assertSame('active', $connection->fresh()->status);
+        $this->assertNull($connection->fresh()->last_error);
+        Http::assertSentCount(2);
+    }
+
+    public function test_invalid_grant_requires_new_consent_but_keeps_the_property(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake(['https://oauth2.googleapis.com/token' => Http::response(['error' => 'invalid_grant'], 400)]);
+        [$admin, $site] = $this->connectedSite();
+        $property = $site->googleSearchConsoleProperty;
+        $connection = $property->connection;
+        $connection->update(['token_expires_at' => now()->subMinute()]);
+
+        $this->actingAs($admin)->get(route('sites.show', $site))->assertOk()
+            ->assertSee('Collega nuovamente Search Console');
+
+        $this->assertSame('error', $connection->fresh()->status);
+        $this->assertModelExists($property);
+
+        $this->get(route('sites.show', $site))->assertOk()->assertSee('Collega nuovamente Search Console');
+        Http::assertSentCount(1);
+    }
+
     /** @return array{User, Site} */
     private function connectedSite(): array
     {

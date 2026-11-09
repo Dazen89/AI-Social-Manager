@@ -8,31 +8,27 @@ use App\Models\IntegrationSetting;
 use App\Models\Site;
 use App\Services\GoogleAnalyticsService;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class GoogleAnalyticsSettingsController extends Controller
 {
-    public function edit(Request $request, GoogleAnalyticsService $analytics): View
+    public function edit(Site $site, GoogleAnalyticsService $analytics): View
     {
         $setting = IntegrationSetting::query()
             ->where('provider', IntegrationSetting::GOOGLE_ANALYTICS)
             ->first();
-        $returnSite = $request->integer('site')
-            ? Site::query()->find($request->integer('site'))
-            : null;
 
-        return view('settings.integrations.google-analytics', [
+        return view('sites.integrations.google-analytics.settings', [
             'setting' => $setting,
             'clientId' => (string) data_get($setting?->configuration, 'client_id', ''),
             'environmentManaged' => $analytics->environmentCredentialsAreConfigured(),
             'redirectUri' => $analytics->redirectUri(),
-            'returnSite' => $returnSite,
+            'site' => $site,
             'hasConnections' => GoogleAnalyticsConnection::query()->exists(),
         ]);
     }
 
-    public function update(SaveGoogleAnalyticsSettingsRequest $request, GoogleAnalyticsService $analytics): RedirectResponse
+    public function update(SaveGoogleAnalyticsSettingsRequest $request, Site $site, GoogleAnalyticsService $analytics): RedirectResponse
     {
         if ($analytics->environmentCredentialsAreConfigured()) {
             return back()->with('integration_error', 'Le credenziali sono gestite dalle variabili d’ambiente e non possono essere modificate dalla dashboard.');
@@ -77,22 +73,12 @@ class GoogleAnalyticsSettingsController extends Controller
             'last_error' => null,
         ]);
 
-        $returnSite = $request->validated('return_site_id')
-            ? Site::query()->find($request->validated('return_site_id'))
-            : null;
-
-        if ($returnSite) {
-            return redirect()
-                ->route('sites.edit', $returnSite)
-                ->with('status', 'Credenziali Google Analytics salvate. Ora puoi collegare l’account Google.');
-        }
-
         return redirect()
-            ->route('settings.google-analytics.edit')
-            ->with('status', 'Credenziali Google Analytics salvate in forma cifrata. Completa un collegamento per verificarle.');
+            ->route('sites.edit', $site)
+            ->with('status', 'Credenziali Google Analytics salvate. Ora puoi collegare l’account Google.');
     }
 
-    public function destroy(GoogleAnalyticsService $analytics): RedirectResponse
+    public function destroy(Site $site, GoogleAnalyticsService $analytics): RedirectResponse
     {
         if ($analytics->environmentCredentialsAreConfigured()) {
             return back()->with('integration_error', 'Le credenziali gestite dall’ambiente non possono essere cancellate dalla dashboard.');
@@ -107,7 +93,7 @@ class GoogleAnalyticsSettingsController extends Controller
             ->delete();
 
         return redirect()
-            ->route('settings.google-analytics.edit')
+            ->route('google-analytics.settings.edit', $site)
             ->with('status', 'Configurazione Google Analytics rimossa.');
     }
 }

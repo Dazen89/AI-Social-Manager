@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\GoogleAnalyticsConnection;
+use App\Models\GoogleSearchConsoleConnection;
 use App\Models\Site;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -44,6 +46,49 @@ class SiteManagementTest extends TestCase
             ->assertDontSee('id="base_url" name="base_url" type="url"', false)
             ->assertDontSee('Google Analytics 4')
             ->assertDontSee('analytics_property_id');
+    }
+
+    public function test_dashboard_shows_google_connection_status_for_each_site(): void
+    {
+        $admin = User::factory()->administrator()->create();
+        $searchSite = Site::factory()->create(['name' => 'Beta', 'host' => 'beta.test', 'base_url' => 'https://beta.test']);
+        $analyticsSite = Site::factory()->create(['name' => 'Alfa', 'host' => 'alfa.test', 'base_url' => 'https://alfa.test']);
+        $analyticsConnection = GoogleAnalyticsConnection::query()->create(['access_token' => 'analytics-token', 'status' => 'active']);
+        $searchConnection = GoogleSearchConsoleConnection::query()->create(['access_token' => 'search-token', 'status' => 'active']);
+        $failedSearchConnection = GoogleSearchConsoleConnection::query()->create(['access_token' => 'invalid-token', 'status' => 'error']);
+
+        $analyticsSite->googleAnalyticsProperty()->create([
+            'google_analytics_connection_id' => $analyticsConnection->id,
+            'property_id' => '123456789',
+        ]);
+        $analyticsSite->googleSearchConsoleProperty()->create([
+            'google_search_console_connection_id' => $failedSearchConnection->id,
+            'property_url' => 'sc-domain:alfa.test',
+            'property_type' => 'domain',
+        ]);
+        $searchSite->googleAnalyticsProperty()->create(['property_id' => '987654321']);
+        $searchSite->googleSearchConsoleProperty()->create([
+            'google_search_console_connection_id' => $searchConnection->id,
+            'property_url' => 'sc-domain:beta.test',
+            'property_type' => 'domain',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSeeInOrder([
+                route('sites.show', $analyticsSite),
+                'Alfa',
+                'alfa.test',
+                route('sites.edit', $analyticsSite).'#integrations-heading',
+                'aria-label="Analytics — Collegato"',
+                'aria-label="Search Console — Non collegato"',
+                route('sites.show', $searchSite),
+                'Beta',
+                'beta.test',
+                'aria-label="Analytics — Non collegato"',
+                'aria-label="Search Console — Collegato"',
+            ], false);
     }
 
     public function test_administrator_creates_a_site_before_choosing_services(): void

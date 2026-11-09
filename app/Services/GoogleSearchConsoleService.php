@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Exceptions\GoogleSearchConsoleException;
 use App\Models\GoogleSearchConsoleConnection;
 use App\Models\IntegrationSetting;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -178,42 +179,66 @@ class GoogleSearchConsoleService
 
     public function validAccessToken(GoogleSearchConsoleConnection $connection): string
     {
-        if ($connection->token_expires_at?->isAfter(now()->addMinute())) {
+        if ($connection->status === 'active' && $connection->token_expires_at?->isAfter(now()->addMinute())) {
             return $connection->access_token;
         }
 
-        if (blank($connection->refresh_token)) {
-            throw new GoogleSearchConsoleException('L’autorizzazione Google è scaduta. Collega nuovamente Search Console.');
+        $refreshToken = $connection->refresh_token;
+
+        if (blank($refreshToken)) {
+            $this->requireReauthorization($connection);
         }
 
         $credentials = $this->credentials();
-        $response = Http::asForm()
-            ->acceptJson()
-            ->timeout(15)
-            ->post(self::TOKEN_ENDPOINT, [
-                'client_id' => $credentials['client_id'] ?? null,
-                'client_secret' => $credentials['client_secret'] ?? null,
-                'refresh_token' => $connection->refresh_token,
-                'grant_type' => 'refresh_token',
-            ]);
 
-        if ($response->failed() || blank($response->json('access_token'))) {
-            $connection->update([
-                'status' => 'error',
-                'last_error' => 'L’autorizzazione Google non può essere rinnovata.',
-            ]);
+        try {
+            $response = Http::asForm()
+                ->acceptJson()
+                ->timeout(15)
+                ->post(self::TOKEN_ENDPOINT, [
+                    'client_id' => $credentials['client_id'] ?? null,
+                    'client_secret' => $credentials['client_secret'] ?? null,
+                    'refresh_token' => $refreshToken,
+                    'grant_type' => 'refresh_token',
+                ]);
+        } catch (ConnectionException) {
+            throw new GoogleSearchConsoleException('Il rinnovo Search Console è temporaneamente indisponibile. Riprova più tardi.');
+        }
 
-            throw new GoogleSearchConsoleException('L’autorizzazione Google non può essere rinnovata. Collega nuovamente Search Console.');
+        if ($response->clientError() && $response->json('error') === 'invalid_grant') {
+            $this->requireReauthorization($connection);
+        }
+
+        if ($response->json('error') === 'invalid_client') {
+            throw new GoogleSearchConsoleException('Google ha rifiutato il client OAuth. Verifica le credenziali Search Console nelle impostazioni.');
+        }
+
+        $accessToken = $response->json('access_token');
+
+        if (! $response->successful() || ! is_string($accessToken) || blank($accessToken)) {
+            throw new GoogleSearchConsoleException('Il rinnovo Search Console è temporaneamente indisponibile. Riprova più tardi.');
         }
 
         $connection->update([
-            'access_token' => (string) $response->json('access_token'),
+            'access_token' => $accessToken,
             'token_expires_at' => now()->addSeconds(max(1, (int) $response->json('expires_in', 3600))),
             'status' => 'active',
             'last_error' => null,
         ]);
 
-        return $connection->access_token;
+        return $accessToken;
+    }
+
+    private function requireReauthorization(GoogleSearchConsoleConnection $connection): never
+    {
+        $message = 'L’autorizzazione Google è scaduta o è stata revocata. Collega nuovamente Search Console.';
+
+        $connection->update([
+            'status' => 'error',
+            'last_error' => $message,
+        ]);
+
+        throw new GoogleSearchConsoleException($message);
     }
 
     /**
@@ -228,11 +253,6 @@ class GoogleSearchConsoleService
             ->get($url);
 
         if ($response->failed()) {
-            $connection->update([
-                'status' => 'error',
-                'last_error' => 'Google Search Console non è raggiungibile o l’autorizzazione non è più valida.',
-            ]);
-
             throw new GoogleSearchConsoleException('Search Console non è raggiungibile o l’autorizzazione non è più valida. Controlla che la Search Console API sia abilitata e riprova.');
         }
 

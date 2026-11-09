@@ -4,15 +4,13 @@
 
 @section('page')
     <main id="main-content" class="ui-page ui-page-narrow" tabindex="-1">
-        <x-page-header title="Google Search Console" kicker="Impostazioni dell’installazione" description="Configura una sola volta l’accesso OAuth dell’applicazione. In seguito potrai collegare a ogni sito una proprietà Search Console verificata, usando esclusivamente il permesso di lettura.">
+        <x-page-header title="Google Search Console" :kicker="$site->name" description="Configura l’accesso in sola lettura per collegare una proprietà Search Console a questo sito.">
             <x-slot:back>
-                @if ($returnSite)
-                    <a href="{{ route('sites.edit', $returnSite) }}">← Torna a {{ $returnSite->name }}</a>
-                @endif
+                <a href="{{ route('sites.edit', $site) }}#integrations-heading">← Servizi di {{ $site->name }}</a>
             </x-slot:back>
         </x-page-header>
 
-        <x-google-settings-tabs :return-site="$returnSite" />
+        <x-google-settings-tabs :site="$site" />
 
         @if (session('status'))
             <div class="mb-6 ui-alert ui-tone-success" role="status">{{ session('status') }}</div>
@@ -146,13 +144,9 @@
                         </div>
                     @endif
 
-                    <form method="POST" action="{{ route('settings.google-search-console.update') }}" class="mt-7 space-y-6">
+                    <form method="POST" action="{{ route('google-search-console.settings.update', $site) }}" class="mt-7 space-y-6">
                         @csrf
                         @method('PUT')
-
-                        @if ($returnSite)
-                            <input type="hidden" name="return_site_id" value="{{ $returnSite->id }}">
-                        @endif
 
                         <div>
                             <label for="client_id" class="block text-sm font-medium text-soft">Client ID <span class="text-danger-ink">*</span></label>
@@ -178,7 +172,7 @@
 
                     @if ($setting && ! $hasConnections)
                         <p class="mt-6 text-xs leading-5 text-muted">Hai inserito credenziali errate? Puoi correggerle nel modulo qui sopra oppure rimuoverle e ricominciare. La rimozione non modifica il client nella Google Cloud Console.</p>
-                        <form method="POST" action="{{ route('settings.google-search-console.destroy') }}" class="mt-3" data-confirm="Vuoi rimuovere le credenziali Search Console da questa installazione?" onsubmit="return confirm(this.dataset.confirm)">
+                        <form method="POST" action="{{ route('google-search-console.settings.destroy', $site) }}" class="mt-3" data-confirm="Vuoi rimuovere le credenziali Search Console da questa installazione?" onsubmit="return confirm(this.dataset.confirm)">
                             @csrf
                             @method('DELETE')
                             <button type="submit" class="w-full ui-button ui-button-danger">Rimuovi credenziali OAuth</button>

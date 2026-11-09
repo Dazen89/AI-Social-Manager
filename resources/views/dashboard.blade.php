@@ -4,54 +4,71 @@
 
 @section('page')
     <main id="main-content" class="ui-page" tabindex="-1">
-        <x-page-header title="Dashboard" kicker="Area di monitoraggio" :description="'Benvenuto, '.auth()->user()->name.'. Registra i siti che vuoi monitorare e scegli quali servizi collegare.'">
+        <x-page-header title="Dashboard" kicker="Area di monitoraggio" description="Consulta i tuoi siti e lo stato dei servizi collegati.">
             <x-slot:actions>
                 <a href="{{ route('sites.create') }}" class="ui-button ui-button-primary"><x-icon name="plus" /> Aggiungi sito</a>
             </x-slot:actions>
         </x-page-header>
 
-        <dl class="grid gap-4 sm:grid-cols-3">
-            <x-kpi label="Siti registrati" icon="globe">{{ $siteCount }}</x-kpi>
-            <x-kpi label="Google Analytics collegati" icon="chart">{{ $connectedAnalyticsCount }}</x-kpi>
-            <x-kpi label="Integrazione AI" icon="ai">
-                <span class="block text-lg">{{ $aiIntegration?->name ?? 'Da configurare' }}</span>
-                @if ($aiIntegration)
-                    <x-slot:note>{{ config('ai.providers.'.$aiIntegration->provider.'.name') }} · {{ config('ai.providers.'.$aiIntegration->provider.'.models.'.$aiIntegration->model, $aiIntegration->model) }}</x-slot:note>
-                    <x-slot:status>
-                        @php
-                            [$tone, $label] = match ($aiIntegration->status) {
-                                'verified' => ['success', 'Chiave e modello verificati'],
-                                'error' => ['danger', 'Verifica non riuscita'],
-                                default => ['warning', 'Da verificare'],
-                            };
-                        @endphp
-                        <span class="ui-badge ui-tone-{{ $tone }}">{{ $label }}</span>
-                    </x-slot:status>
-                @endif
-            </x-kpi>
-        </dl>
+        @if ($sites->isEmpty())
+            <section class="ui-empty">
+                <div class="mx-auto mb-3 grid size-10 place-items-center rounded-lg bg-accent-soft text-accent-ink"><x-icon name="globe" /></div>
+                <h2>Nessun sito registrato</h2>
+                <p>Aggiungi il primo sito che possiedi o sei autorizzato a monitorare.</p>
+            </section>
+        @else
+            <section class="ui-panel" aria-labelledby="dashboard-sites-heading">
+                <div class="ui-panel-heading">
+                    <h2 id="dashboard-sites-heading">Siti</h2>
+                    <p class="mt-1 text-sm text-muted">Analytics e Search Console si collegano a ogni sito. Social (X) e AI sono condivisi nel workspace.</p>
+                </div>
 
-        <section class="ui-panel mt-6" aria-labelledby="workspace-actions">
-            <div class="ui-panel-heading">
-                <h2 id="workspace-actions">Gestisci il workspace</h2>
-            </div>
-            <div class="grid divide-y divide-line md:grid-cols-3 md:divide-x md:divide-y-0">
-                <div class="p-5">
-                    <h3 class="font-semibold">Siti e report</h3>
-                    <p class="mt-1 text-sm text-muted">Apri la panoramica di un sito, consulta i dati o gestisci i collegamenti Google.</p>
-                    <a href="{{ route('sites.index') }}" class="mt-4 ui-button ui-button-small">Gestisci i siti <x-icon name="arrow" /></a>
+                <div class="divide-y divide-line">
+                    @foreach ($sites as $site)
+                        @php
+                            $siteIntegrations = route('sites.edit', $site).'#integrations-heading';
+                            $services = [
+                                ['Analytics', 'chart', $site->analytics_connected, $siteIntegrations],
+                                ['Search Console', 'search', $site->search_console_connected, $siteIntegrations],
+                                ['Social (X)', 'x', $xConnected, route('settings.x.edit')],
+                                ['AI', 'ai', $aiConnected, route('settings.ai.index')],
+                            ];
+                        @endphp
+
+                        <article class="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 px-5 py-4">
+                            <div class="min-w-0">
+                                <h3 class="font-semibold">
+                                    <a href="{{ route('sites.show', $site) }}" class="text-ink no-underline hover:text-accent-ink hover:underline">{{ $site->name }}</a>
+                                </h3>
+                                <div class="mt-1 ui-actions">
+                                    <span class="text-sm text-muted">{{ $site->host }}</span>
+                                    @unless ($site->is_active)
+                                        <span class="ui-badge">Sospeso</span>
+                                    @endunless
+                                </div>
+                            </div>
+
+                            <ul class="ui-actions">
+                                @foreach ($services as [$label, $icon, $connected, $url])
+                                    @php($statusLabel = $label.' — '.($connected ? 'Collegato' : 'Non collegato'))
+                                    <li>
+                                        <a href="{{ $url }}" title="{{ $statusLabel }}" aria-label="{{ $statusLabel }}"
+                                           class="inline-flex min-h-8 items-center gap-1.5 rounded-lg border px-2 text-xs font-semibold no-underline hover:underline {{ $connected ? 'ui-tone-success' : 'border-line bg-subtle text-muted' }}">
+                                            <x-icon :name="$icon" />
+                                            {{ $label }}
+                                            <span aria-hidden="true" class="size-1.5 shrink-0 rounded-full border border-current {{ $connected ? 'bg-current' : '' }}"></span>
+                                        </a>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        </article>
+                    @endforeach
                 </div>
-                <div class="p-5">
-                    <h3 class="font-semibold">Analisi AI</h3>
-                    <p class="mt-1 text-sm text-muted">Configura i provider e scegli l’integrazione attiva per le analisi.</p>
-                    <a href="{{ route('settings.ai.index') }}" class="mt-4 ui-button ui-button-small">Gestisci integrazioni AI <x-icon name="arrow" /></a>
-                </div>
-                <div class="p-5">
-                    <h3 class="font-semibold">Social</h3>
-                    <p class="mt-1 text-sm text-muted">Consulta la configurazione dell’app X e lo stato dell’account collegato.</p>
-                    <a href="{{ route('settings.x.edit') }}" class="mt-4 ui-button ui-button-small">Apri Social <x-icon name="arrow" /></a>
-                </div>
-            </div>
-        </section>
+            </section>
+
+            @if ($sites->hasPages())
+                <div class="mt-6">{{ $sites->links() }}</div>
+            @endif
+        @endif
     </main>
 @endsection

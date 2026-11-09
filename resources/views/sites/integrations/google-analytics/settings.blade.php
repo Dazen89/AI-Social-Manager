@@ -4,15 +4,13 @@
 
 @section('page')
     <main id="main-content" class="ui-page ui-page-narrow" tabindex="-1">
-        <x-page-header title="Google Analytics 4" kicker="Impostazioni dell’installazione" description="Queste credenziali identificano questa installazione presso Google. Si configurano una sola volta e consentono poi agli amministratori di collegare gli account Analytics ai singoli siti.">
+        <x-page-header title="Google Analytics 4" :kicker="$site->name" description="Configura l’accesso in sola lettura per collegare una proprietà Analytics a questo sito.">
             <x-slot:back>
-                @if ($returnSite)
-                    <a href="{{ route('sites.edit', $returnSite) }}">← Torna a {{ $returnSite->name }}</a>
-                @endif
+                <a href="{{ route('sites.edit', $site) }}#integrations-heading">← Servizi di {{ $site->name }}</a>
             </x-slot:back>
         </x-page-header>
 
-        <x-google-settings-tabs :return-site="$returnSite" />
+        <x-google-settings-tabs :site="$site" />
 
         @if (session('status'))
             <div class="mb-6 ui-alert ui-tone-success" role="status">{{ session('status') }}</div>
@@ -158,13 +156,9 @@
                         </div>
                     @endif
 
-                    <form method="POST" action="{{ route('settings.google-analytics.update') }}" class="mt-7 space-y-6">
+                    <form method="POST" action="{{ route('google-analytics.settings.update', $site) }}" class="mt-7 space-y-6">
                         @csrf
                         @method('PUT')
-
-                        @if ($returnSite)
-                            <input type="hidden" name="return_site_id" value="{{ $returnSite->id }}">
-                        @endif
 
                         <div>
                             <label for="client_id" class="block text-sm font-medium text-soft">Client ID <span class="text-danger-ink">*</span></label>
@@ -189,7 +183,7 @@
                     </form>
 
                     @if ($setting && ! $hasConnections)
-                        <form method="POST" action="{{ route('settings.google-analytics.destroy') }}" class="mt-4" data-confirm="Vuoi rimuovere le credenziali Google Analytics da questa installazione?" onsubmit="return confirm(this.dataset.confirm)">
+                        <form method="POST" action="{{ route('google-analytics.settings.destroy', $site) }}" class="mt-4" data-confirm="Vuoi rimuovere le credenziali Google Analytics da questa installazione?" onsubmit="return confirm(this.dataset.confirm)">
                             @csrf
                             @method('DELETE')
                             <button type="submit" class="w-full ui-button ui-button-danger">Rimuovi configurazione</button>

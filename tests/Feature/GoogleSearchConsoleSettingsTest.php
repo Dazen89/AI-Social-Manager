@@ -17,20 +17,23 @@ class GoogleSearchConsoleSettingsTest extends TestCase
     public function test_only_administrators_can_open_search_console_settings(): void
     {
         $user = User::factory()->create(['is_admin' => false]);
+        $site = Site::factory()->create();
 
-        $this->get(route('settings.google-search-console.edit'))
+        $this->get(route('google-search-console.settings.edit', $site))
             ->assertRedirect(route('login'));
 
         $this->actingAs($user)
-            ->get(route('settings.google-search-console.edit'))
+            ->get(route('google-search-console.settings.edit', $site))
             ->assertForbidden();
 
         $admin = User::factory()->administrator()->create();
         $this->configureDatabaseCredentials();
 
         $this->actingAs($admin)
-            ->get(route('settings.google-search-console.edit'))
+            ->get(route('google-search-console.settings.edit', $site))
             ->assertOk()
+            ->assertSee(route('sites.edit', $site).'#integrations-heading', false)
+            ->assertSee(route('google-analytics.settings.edit', $site), false)
             ->assertSee('Google Search Console')
             ->assertSee('Hai già configurato Google Analytics?')
             ->assertSee('Google Search Console API')
@@ -49,10 +52,9 @@ class GoogleSearchConsoleSettingsTest extends TestCase
         $site = Site::factory()->create();
 
         $this->actingAs($admin)
-            ->put(route('settings.google-search-console.update'), [
+            ->put(route('google-search-console.settings.update', $site), [
                 'client_id' => 'search-client.apps.googleusercontent.com',
                 'client_secret' => 'search-client-secret',
-                'return_site_id' => $site->id,
             ])
             ->assertRedirect(route('sites.edit', $site))
             ->assertSessionHas('status', 'Credenziali Search Console salvate. Ora puoi collegare l’account Google.');
@@ -74,6 +76,7 @@ class GoogleSearchConsoleSettingsTest extends TestCase
         $this->configureDatabaseCredentials();
 
         $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
         $setting = IntegrationSetting::query()->create([
             'provider' => IntegrationSetting::GOOGLE_SEARCH_CONSOLE,
             'configuration' => [
@@ -91,18 +94,18 @@ class GoogleSearchConsoleSettingsTest extends TestCase
         ]);
 
         $this->actingAs($admin)
-            ->put(route('settings.google-search-console.update'), [
+            ->put(route('google-search-console.settings.update', $site), [
                 'client_id' => 'different-client.apps.googleusercontent.com',
                 'client_secret' => 'replacement-secret',
             ])
             ->assertSessionHasErrors('client_id');
 
-        $this->get(route('settings.google-search-console.edit'))
+        $this->get(route('google-search-console.settings.edit', $site))
             ->assertOk()
             ->assertSee('scollega prima Search Console da tutti i siti')
             ->assertDontSee('Rimuovi credenziali OAuth');
 
-        $this->delete(route('settings.google-search-console.destroy'))
+        $this->delete(route('google-search-console.settings.destroy', $site))
             ->assertSessionHas('integration_error');
 
         $this->assertSame('saved-client.apps.googleusercontent.com', $setting->fresh()->configuration['client_id']);
@@ -128,26 +131,25 @@ class GoogleSearchConsoleSettingsTest extends TestCase
             ->get(route('sites.edit', $site))
             ->assertOk()
             ->assertSee('Collega Search Console')
-            ->assertSee('Modifica o rimuovi credenziali OAuth')
-            ->assertSee(route('settings.google-search-console.edit', ['site' => $site->id]));
+            ->assertSee('Credenziali OAuth e guida')
+            ->assertSee(route('google-search-console.settings.edit', $site), false);
 
-        $this->get(route('settings.google-search-console.edit', ['site' => $site->id]))
+        $this->get(route('google-search-console.settings.edit', $site))
             ->assertOk()
             ->assertSee('wrong-client.apps.googleusercontent.com')
             ->assertSee('Rimuovi credenziali OAuth')
             ->assertDontSee('wrong-secret');
 
-        $this->put(route('settings.google-search-console.update'), [
+        $this->put(route('google-search-console.settings.update', $site), [
             'client_id' => 'correct-client.apps.googleusercontent.com',
             'client_secret' => 'correct-secret',
-            'return_site_id' => $site->id,
         ])->assertRedirect(route('sites.edit', $site));
 
         $this->assertSame('correct-client.apps.googleusercontent.com', $setting->fresh()->configuration['client_id']);
         $this->assertSame('correct-secret', $setting->fresh()->configuration['client_secret']);
 
-        $this->delete(route('settings.google-search-console.destroy'))
-            ->assertRedirect(route('settings.google-search-console.edit'));
+        $this->delete(route('google-search-console.settings.destroy', $site))
+            ->assertRedirect(route('google-search-console.settings.edit', $site));
 
         $this->assertDatabaseMissing('integration_settings', ['provider' => IntegrationSetting::GOOGLE_SEARCH_CONSOLE]);
     }

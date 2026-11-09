@@ -19,7 +19,6 @@ class SaveGoogleAnalyticsSettingsRequest extends FormRequest
         return [
             'client_id' => ['required', 'string', 'max:2048'],
             'client_secret' => ['nullable', 'string', 'max:4096'],
-            'return_site_id' => ['nullable', 'integer', 'exists:sites,id'],
         ];
     }
 
@@ -32,7 +31,6 @@ class SaveGoogleAnalyticsSettingsRequest extends FormRequest
             'client_id.required' => 'Inserisci il Client ID generato da Google Cloud.',
             'client_id.max' => 'Il Client ID è troppo lungo.',
             'client_secret.max' => 'Il Client Secret è troppo lungo.',
-            'return_site_id.exists' => 'Il sito da cui provieni non è più disponibile.',
         ];
     }
 

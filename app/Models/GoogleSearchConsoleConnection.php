@@ -20,6 +20,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Hidden(['access_token', 'refresh_token'])]
 class GoogleSearchConsoleConnection extends Model
 {
+    public function canLoadReports(): bool
+    {
+        // Earlier versions used this message for both temporary failures and invalid grants.
+        return $this->status === 'active'
+            || ($this->status === 'error' && $this->last_error === 'L’autorizzazione Google non può essere rinnovata.');
+    }
+
     protected function casts(): array
     {
         return [

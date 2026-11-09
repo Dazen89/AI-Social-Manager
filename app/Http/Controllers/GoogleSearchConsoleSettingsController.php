@@ -8,31 +8,27 @@ use App\Models\IntegrationSetting;
 use App\Models\Site;
 use App\Services\GoogleSearchConsoleService;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class GoogleSearchConsoleSettingsController extends Controller
 {
-    public function edit(Request $request, GoogleSearchConsoleService $searchConsole): View
+    public function edit(Site $site, GoogleSearchConsoleService $searchConsole): View
     {
         $setting = IntegrationSetting::query()
             ->where('provider', IntegrationSetting::GOOGLE_SEARCH_CONSOLE)
             ->first();
-        $returnSite = $request->integer('site')
-            ? Site::query()->find($request->integer('site'))
-            : null;
 
-        return view('settings.integrations.google-search-console', [
+        return view('sites.integrations.google-search-console.settings', [
             'setting' => $setting,
             'clientId' => (string) data_get($setting?->configuration, 'client_id', ''),
             'environmentManaged' => $searchConsole->environmentCredentialsAreConfigured(),
             'redirectUri' => $searchConsole->redirectUri(),
-            'returnSite' => $returnSite,
+            'site' => $site,
             'hasConnections' => GoogleSearchConsoleConnection::query()->exists(),
         ]);
     }
 
-    public function update(SaveGoogleSearchConsoleSettingsRequest $request, GoogleSearchConsoleService $searchConsole): RedirectResponse
+    public function update(SaveGoogleSearchConsoleSettingsRequest $request, Site $site, GoogleSearchConsoleService $searchConsole): RedirectResponse
     {
         if ($searchConsole->environmentCredentialsAreConfigured()) {
             return back()->with('integration_error', 'Le credenziali sono gestite dalle variabili d’ambiente e non possono essere modificate dalla dashboard.');
@@ -77,22 +73,12 @@ class GoogleSearchConsoleSettingsController extends Controller
             'last_error' => null,
         ]);
 
-        $returnSite = $request->validated('return_site_id')
-            ? Site::query()->find($request->validated('return_site_id'))
-            : null;
-
-        if ($returnSite) {
-            return redirect()
-                ->route('sites.edit', $returnSite)
-                ->with('status', 'Credenziali Search Console salvate. Ora puoi collegare l’account Google.');
-        }
-
         return redirect()
-            ->route('settings.google-search-console.edit')
-            ->with('status', 'Credenziali Search Console salvate in forma cifrata. Completa un collegamento per verificarle.');
+            ->route('sites.edit', $site)
+            ->with('status', 'Credenziali Search Console salvate. Ora puoi collegare l’account Google.');
     }
 
-    public function destroy(GoogleSearchConsoleService $searchConsole): RedirectResponse
+    public function destroy(Site $site, GoogleSearchConsoleService $searchConsole): RedirectResponse
     {
         if ($searchConsole->environmentCredentialsAreConfigured()) {
             return back()->with('integration_error', 'Le credenziali gestite dall’ambiente non possono essere cancellate dalla dashboard.');
@@ -107,7 +93,7 @@ class GoogleSearchConsoleSettingsController extends Controller
             ->delete();
 
         return redirect()
-            ->route('settings.google-search-console.edit')
+            ->route('google-search-console.settings.edit', $site)
             ->with('status', 'Configurazione Search Console rimossa.');
     }
 }

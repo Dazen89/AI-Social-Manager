@@ -287,10 +287,15 @@
                 @endunless
             </div>
 
-            @unless ($searchIsConnected)
+            @if ($searchReportError)
+                <div class="mt-6 ui-alert ui-tone-warning" role="alert">
+                    {{ $searchReportError }}
+                    @unless ($searchIsConnected)
+                        <a href="{{ route('sites.edit', $site) }}#integrations-heading" class="font-medium text-accent-ink">Gestisci il collegamento</a>
+                    @endunless
+                </div>
+            @elseif (! $searchIsConnected)
                 <p class="mt-6 text-sm text-muted">Search Console non è collegata. <a href="{{ route('sites.edit', $site) }}" class="font-medium text-accent-ink">Gestisci il collegamento</a> per vedere impressioni, clic, CTR e posizione.</p>
-            @elseif ($searchReportError)
-                <div class="mt-6 ui-alert ui-tone-danger" role="alert">{{ $searchReportError }}</div>
             @elseif (! $searchOverview['has_data'])
                 <div class="mt-6 ui-alert ui-tone-warning">Search Console ha risposto, ma non ci sono dati finalizzati per questo host dal {{ $searchOverview['start_date'] }} al {{ $searchOverview['end_date'] }}. I valori assenti non sono mostrati come zero.</div>
             @else

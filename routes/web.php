@@ -29,6 +29,7 @@ Route::middleware('auth')->group(function (): void {
 
     Route::middleware('admin')->group(function (): void {
         Route::get('/dashboard', DashboardController::class)->name('dashboard');
+        Route::view('/settings', 'settings.index')->name('settings.index');
         Route::resource('sites', SiteController::class)->only(['index', 'create', 'store', 'edit', 'update']);
         Route::get('/sites/{site}', SiteAnalyticsOverviewController::class)->name('sites.show');
         Route::get('/sites/{site}/editorial-plan', [SiteEditorialPlanController::class, 'show'])->name('sites.editorial-plan.show');
@@ -58,20 +59,6 @@ Route::middleware('auth')->group(function (): void {
             ->name('sites.editorial-plan.proposals.review');
         Route::post('/sites/{site}/analytics/insights', [AnalyticsInsightController::class, 'store'])
             ->name('sites.analytics-insights.store');
-
-        Route::get('/settings/integrations/google-analytics', [GoogleAnalyticsSettingsController::class, 'edit'])
-            ->name('settings.google-analytics.edit');
-        Route::put('/settings/integrations/google-analytics', [GoogleAnalyticsSettingsController::class, 'update'])
-            ->name('settings.google-analytics.update');
-        Route::delete('/settings/integrations/google-analytics', [GoogleAnalyticsSettingsController::class, 'destroy'])
-            ->name('settings.google-analytics.destroy');
-
-        Route::get('/settings/integrations/google-search-console', [GoogleSearchConsoleSettingsController::class, 'edit'])
-            ->name('settings.google-search-console.edit');
-        Route::put('/settings/integrations/google-search-console', [GoogleSearchConsoleSettingsController::class, 'update'])
-            ->name('settings.google-search-console.update');
-        Route::delete('/settings/integrations/google-search-console', [GoogleSearchConsoleSettingsController::class, 'destroy'])
-            ->name('settings.google-search-console.destroy');
 
         Route::get('/settings/integrations/ai', [AiIntegrationSettingsController::class, 'index'])
             ->name('settings.ai.index');
@@ -103,6 +90,12 @@ Route::middleware('auth')->group(function (): void {
         Route::delete('/integrations/x', [XConnectionController::class, 'destroy'])
             ->name('x.destroy');
 
+        Route::get('/sites/{site}/integrations/google-analytics/credentials', [GoogleAnalyticsSettingsController::class, 'edit'])
+            ->name('google-analytics.settings.edit');
+        Route::put('/sites/{site}/integrations/google-analytics/credentials', [GoogleAnalyticsSettingsController::class, 'update'])
+            ->name('google-analytics.settings.update');
+        Route::delete('/sites/{site}/integrations/google-analytics/credentials', [GoogleAnalyticsSettingsController::class, 'destroy'])
+            ->name('google-analytics.settings.destroy');
         Route::get('/sites/{site}/integrations/google-analytics/connect', [GoogleAnalyticsConnectionController::class, 'connect'])
             ->name('google-analytics.connect');
         Route::get('/integrations/google-analytics/callback', [GoogleAnalyticsConnectionController::class, 'callback'])
@@ -116,6 +109,12 @@ Route::middleware('auth')->group(function (): void {
         Route::delete('/sites/{site}/integrations/google-analytics', [GoogleAnalyticsConnectionController::class, 'destroy'])
             ->name('google-analytics.destroy');
 
+        Route::get('/sites/{site}/integrations/google-search-console/credentials', [GoogleSearchConsoleSettingsController::class, 'edit'])
+            ->name('google-search-console.settings.edit');
+        Route::put('/sites/{site}/integrations/google-search-console/credentials', [GoogleSearchConsoleSettingsController::class, 'update'])
+            ->name('google-search-console.settings.update');
+        Route::delete('/sites/{site}/integrations/google-search-console/credentials', [GoogleSearchConsoleSettingsController::class, 'destroy'])
+            ->name('google-search-console.settings.destroy');
         Route::get('/sites/{site}/integrations/google-search-console/connect', [GoogleSearchConsoleConnectionController::class, 'connect'])
             ->name('google-search-console.connect');
         Route::get('/integrations/google-search-console/callback', [GoogleSearchConsoleConnectionController::class, 'callback'])

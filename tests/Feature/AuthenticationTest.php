@@ -42,7 +42,32 @@ class AuthenticationTest extends TestCase
         $this->actingAs($user)
             ->get('/dashboard')
             ->assertOk()
-            ->assertSee('Area di monitoraggio');
+            ->assertSee('Area di monitoraggio')
+            ->assertSee('Nessun sito registrato')
+            ->assertSee(route('sites.create'), false)
+            ->assertSee('href="'.route('settings.index').'" class="ui-nav-link"', false);
+    }
+
+    public function test_general_settings_show_installation_details_to_administrators(): void
+    {
+        $this->get(route('settings.index'))->assertRedirect(route('login'));
+
+        $this->actingAs(User::factory()->create(['is_admin' => false]))
+            ->get(route('settings.index'))
+            ->assertForbidden();
+
+        config()->set('app.name', 'Installazione di esempio');
+        config()->set('app.url', 'https://monitor.example.test');
+
+        $this->actingAs(User::factory()->administrator()->create())
+            ->get(route('settings.index'))
+            ->assertOk()
+            ->assertSee('Informazioni sull’installazione')
+            ->assertSee('Installazione di esempio')
+            ->assertSee('https://monitor.example.test')
+            ->assertSee('Fuso orario dell’applicazione')
+            ->assertDontSee('Google Analytics')
+            ->assertDontSee('Google Search Console');
     }
 
     public function test_user_cannot_log_in_with_invalid_credentials(): void

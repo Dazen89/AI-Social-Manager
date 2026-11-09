@@ -14,6 +14,8 @@
         @case('plus') <path d="M12 5v14M5 12h14"/> @break
         @case('arrow') <path d="M4 12h15m-6-6 6 6-6 6"/> @break
         @case('chart') <path d="M4 19V5m0 14h16M8 15v-3m4 3V8m4 7V5"/> @break
+        @case('search') <circle cx="10.5" cy="10.5" r="5.5"/><path d="m14.5 14.5 5 5"/> @break
+        @case('x') <path d="M4 4h4l12 16h-4L4 4Zm16 0-6.5 7.5m-3 3.5L4 20"/> @break
         @case('calendar') <rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 10h18"/> @break
         @case('warning') <path d="M12 3 2.8 20h18.4L12 3Zm0 6v4m0 3v.1"/> @break
         @case('info') <circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8v.1"/> @break

@@ -91,8 +91,9 @@
 
                         @if ($googleAnalyticsOAuthConfigured)
                             <a href="{{ route('google-analytics.connect', $site) }}" class="ui-button ui-button-primary">{{ $analyticsIsConnected ? 'Cambia account o proprietà' : 'Collega account Google' }}</a>
+                            <a href="{{ route('google-analytics.settings.edit', $site) }}" class="ui-button">Credenziali OAuth e guida</a>
                         @else
-                            <a href="{{ route('settings.google-analytics.edit', ['site' => $site->id]) }}" class="ui-button ui-button-primary">Configura Google Analytics</a>
+                            <a href="{{ route('google-analytics.settings.edit', $site) }}" class="ui-button ui-button-primary">Configura Google Analytics</a>
                         @endif
 
                         @if ($analyticsProperty)
@@ -109,7 +110,7 @@
                     <div class="mt-6 rounded-xl border border-warning-ink/22 bg-warning-soft p-4 text-sm leading-6 text-warning-ink">
                         <p class="font-semibold">Prima configura l’accesso Google dell’installazione</p>
                         <p class="mt-2">La procedura guidata spiega quali credenziali creare in Google Cloud, dove trovarle e come salvarle in sicurezza dalla dashboard. È un’operazione unica per tutta l’installazione.</p>
-                        <a href="{{ route('settings.google-analytics.edit', ['site' => $site->id]) }}" class="mt-3 inline-flex font-medium text-warning-ink underline underline-offset-4">Apri la procedura guidata</a>
+                        <a href="{{ route('google-analytics.settings.edit', $site) }}" class="mt-3 inline-flex font-medium text-warning-ink underline underline-offset-4">Apri la procedura guidata</a>
                     </div>
                 @endunless
             </article>
@@ -127,12 +128,23 @@
                             <h3 class="text-lg font-semibold">Google Search Console</h3>
                             @if ($searchConsoleIsConnected)
                                 <span class="rounded-full bg-success-soft px-2.5 py-1 text-xs font-medium text-success-ink">Collegata</span>
+                            @elseif ($searchConsoleConnection?->status === 'error')
+                                <span class="rounded-full bg-warning-soft px-2.5 py-1 text-xs font-medium text-warning-ink">Da verificare</span>
                             @else
                                 <span class="rounded-full bg-subtle px-2.5 py-1 text-xs font-medium text-soft">Non collegata</span>
                             @endif
                         </div>
 
                         <p class="mt-3 text-sm leading-6 text-muted">Aggiunge query, impressioni, clic, CTR e posizione media nei risultati Google. Il collegamento usa soltanto il permesso Search Console di lettura e non può modificare il sito.</p>
+
+                        @if ($searchConsoleConnection?->status === 'error')
+                            <p class="mt-3 ui-alert ui-tone-warning">
+                                {{ $searchConsoleConnection->last_error ?: 'Il collegamento Search Console richiede una nuova autorizzazione.' }}
+                                @if ($searchConsoleConnection->canLoadReports())
+                                    <a href="{{ route('sites.show', $site) }}#search-console-heading" class="font-medium text-accent-ink">Apri la panoramica per riprovare</a>
+                                @endif
+                            </p>
+                        @endif
 
                         @if ($searchConsoleIsConnected)
                             <dl class="mt-4 grid gap-3 rounded-xl border border-success-ink/22 bg-success-soft p-4 text-sm sm:grid-cols-2">
@@ -155,9 +167,9 @@
                     <div class="flex min-w-56 flex-col items-stretch gap-3">
                         @if ($googleSearchConsoleOAuthConfigured)
                             <a href="{{ route('google-search-console.connect', $site) }}" class="ui-button ui-button-primary">{{ $searchConsoleIsConnected ? 'Cambia account o proprietà' : 'Collega Search Console' }}</a>
-                            <a href="{{ route('settings.google-search-console.edit', ['site' => $site->id]) }}" class="ui-button">Modifica o rimuovi credenziali OAuth</a>
+                            <a href="{{ route('google-search-console.settings.edit', $site) }}" class="ui-button">Credenziali OAuth e guida</a>
                         @else
-                            <a href="{{ route('settings.google-search-console.edit', ['site' => $site->id]) }}" class="ui-button ui-button-primary">Configura Search Console</a>
+                            <a href="{{ route('google-search-console.settings.edit', $site) }}" class="ui-button ui-button-primary">Configura Search Console</a>
                         @endif
 
                         @if ($searchConsoleProperty)
@@ -174,7 +186,7 @@
                     <div class="mt-6 rounded-xl border border-warning-ink/22 bg-warning-soft p-4 text-sm leading-6 text-warning-ink">
                         <p class="font-semibold">Prima abilita l’accesso Search Console dell’installazione</p>
                         <p class="mt-2">La guida mostra come verificare il sito in Search Console, abilitare l’API, aggiungere il permesso di sola lettura e configurare il callback. Se hai già Google Analytics, puoi riutilizzare lo stesso progetto e client OAuth.</p>
-                        <a href="{{ route('settings.google-search-console.edit', ['site' => $site->id]) }}" class="mt-3 inline-flex font-medium text-warning-ink underline underline-offset-4">Apri la procedura guidata</a>
+                        <a href="{{ route('google-search-console.settings.edit', $site) }}" class="mt-3 inline-flex font-medium text-warning-ink underline underline-offset-4">Apri la procedura guidata</a>
                     </div>
                 @endunless
             </article>

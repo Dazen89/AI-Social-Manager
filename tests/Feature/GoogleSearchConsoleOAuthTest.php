@@ -63,6 +63,13 @@ class GoogleSearchConsoleOAuthTest extends TestCase
             ->assertSee('https://other.example.test/', false)
             ->assertDontSee('sc-domain:unverified.example.test');
 
+        $previousConnection = $this->connection($admin);
+        $site->googleSearchConsoleProperty()->create([
+            'google_search_console_connection_id' => $previousConnection->id,
+            'property_url' => 'sc-domain:example.test',
+            'property_type' => 'domain',
+        ]);
+
         $this->post(route('google-search-console.store', $site), [
             'property' => 'sc-domain:example.test',
         ])->assertRedirect(route('sites.edit', $site))
@@ -75,6 +82,8 @@ class GoogleSearchConsoleOAuthTest extends TestCase
             'property_type' => 'domain',
             'permission_level' => 'siteOwner',
         ]);
+        $this->assertModelMissing($previousConnection);
+        Http::assertNotSent(fn (Request $request): bool => $request->url() === 'https://oauth2.googleapis.com/revoke');
 
         $this->actingAs($admin)
             ->get(route('sites.edit', $site))

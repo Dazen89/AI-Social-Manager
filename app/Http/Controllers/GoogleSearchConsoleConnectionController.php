@@ -23,7 +23,7 @@ class GoogleSearchConsoleConnectionController extends Controller
                 ->with('integration_error', 'Prima di collegare Search Console configura le credenziali OAuth dell’installazione.');
         }
 
-        $this->discardPendingSelection($request, $site, $searchConsole);
+        $this->discardPendingSelection($request, $site);
 
         $state = Str::random(64);
 
@@ -164,7 +164,9 @@ class GoogleSearchConsoleConnectionController extends Controller
                 ]);
             });
 
-            $this->removeUnusedConnection($previousConnectionId, $connection->id, $searchConsole);
+            if ($previousConnectionId !== $connection->id) {
+                $this->removeUnusedConnection($previousConnectionId);
+            }
         } catch (GoogleSearchConsoleException $exception) {
             return back()->with('integration_error', $exception->getMessage());
         } catch (Throwable $exception) {
@@ -182,9 +184,9 @@ class GoogleSearchConsoleConnectionController extends Controller
         return redirect()->route('sites.edit', $site)->with('status', $message);
     }
 
-    public function cancel(Request $request, Site $site, GoogleSearchConsoleService $searchConsole): RedirectResponse
+    public function cancel(Request $request, Site $site): RedirectResponse
     {
-        $this->discardPendingSelection($request, $site, $searchConsole);
+        $this->discardPendingSelection($request, $site);
 
         return redirect()
             ->route('sites.edit', $site)
@@ -243,42 +245,21 @@ class GoogleSearchConsoleConnectionController extends Controller
             ->first();
     }
 
-    private function removeUnusedConnection(?int $previousConnectionId, int $currentConnectionId, GoogleSearchConsoleService $searchConsole): void
+    private function removeUnusedConnection(?int $connectionId): void
     {
-        if (! $previousConnectionId || $previousConnectionId === $currentConnectionId) {
+        if ($connectionId === null) {
             return;
         }
 
-        $connection = GoogleSearchConsoleConnection::query()->find($previousConnectionId);
-
-        if (! $connection || $connection->properties()->exists()) {
-            return;
-        }
-
-        try {
-            $searchConsole->revoke($connection);
-        } catch (Throwable $exception) {
-            report($exception);
-        }
-
-        $connection->delete();
+        // Google revokes access for the entire project. Only an explicit disconnect revokes it.
+        GoogleSearchConsoleConnection::query()->whereKey($connectionId)->doesntHave('properties')->delete();
     }
 
-    private function discardPendingSelection(Request $request, Site $site, GoogleSearchConsoleService $searchConsole): void
+    private function discardPendingSelection(Request $request, Site $site): void
     {
         $connection = $this->selectionConnection($request, $site);
         $request->session()->forget('google_search_console_selection');
 
-        if (! $connection || $connection->properties()->exists()) {
-            return;
-        }
-
-        try {
-            $searchConsole->revoke($connection);
-        } catch (Throwable $exception) {
-            report($exception);
-        }
-
-        $connection->delete();
+        $this->removeUnusedConnection($connection?->id);
     }
 }

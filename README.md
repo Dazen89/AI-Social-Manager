@@ -59,7 +59,7 @@ L’integrazione usa OAuth 2.0 con il solo scope di lettura `analytics.readonly`
 
 Per configurare una nuova installazione:
 
-1. Apri **Impostazioni → Google Analytics** nella dashboard e mantienila aperta come guida.
+1. Apri **Gestisci sito → Google Analytics 4 → Configura Google Analytics** e mantieni la pagina aperta come guida.
 2. Crea o seleziona un progetto in Google Cloud e abilita sia **Google Analytics Admin API** sia **Google Analytics Data API**. La prima scopre account, proprietà e stream; la seconda legge i report della panoramica.
 3. In **Google Auth Platform → Branding** configura nome applicazione, email di assistenza, pubblico ed email di contatto.
 4. Se il pubblico è **Esterno** e l’app è in modalità **Test**, aggiungi in **Pubblico → Utenti di test** gli account Google che potranno collegare Analytics. I refresh token delle app esterne in modalità Test possono scadere dopo sette giorni; per l’uso continuativo occorre passare in produzione e seguire le eventuali richieste di verifica di Google.
@@ -87,7 +87,7 @@ Le variabili d’ambiente hanno la precedenza sui valori nel database e rendono 
    php artisan config:clear
    ```
 
-Il redirect URI deve coincidere esattamente con quello registrato in Google Cloud, inclusi protocollo, dominio, porta e slash finale. La dashboard usa l’indirizzo configurato dall’installazione tramite `APP_URL` oppure, se presente, `GOOGLE_ANALYTICS_REDIRECT_URI`: non sostituisce il dominio e non impone `localhost`. L’accettazione finale dell’URI dipende dalle regole applicate da Google Cloud. Le credenziali OAuth appartengono all’intera installazione: non devono essere inserite nei form dei singoli siti né aggiunte al repository.
+Il redirect URI deve coincidere esattamente con quello registrato in Google Cloud, inclusi protocollo, dominio, porta e slash finale. La dashboard usa l’indirizzo configurato dall’installazione tramite `APP_URL` oppure, se presente, `GOOGLE_ANALYTICS_REDIRECT_URI`: non sostituisce il dominio e non impone `localhost`. L’accettazione finale dell’URI dipende dalle regole applicate da Google Cloud. Usa il modulo OAuth nella sezione Google Analytics del sito. Le credenziali salvate sono condivise tra i siti dell’installazione e vanno tenute fuori dal repository.
 
 Documentazione ufficiale:
 

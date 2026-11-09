@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\IntegrationSetting;
+use App\Models\Site;
 use App\Models\User;
 use App\Models\XConnection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -152,6 +153,7 @@ class XOAuthTest extends TestCase
         ]);
         $admin = User::factory()->administrator()->create();
         $this->createSetting($admin);
+        Site::factory()->create();
         XConnection::query()->create([
             'authorized_by_user_id' => $admin->id,
             'x_user_id' => '987654321',
@@ -163,9 +165,17 @@ class XOAuthTest extends TestCase
         ]);
 
         $this->actingAs($admin)
-            ->delete(route('x.destroy'))
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('aria-label="Social (X) — Collegato"', false);
+
+        $this->delete(route('x.destroy'))
             ->assertRedirect(route('settings.x.edit'))
             ->assertSessionHas('status', 'Account X scollegato e autorizzazione revocata.');
+
+        $this->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('aria-label="Social (X) — Non collegato"', false);
 
         $this->assertDatabaseCount('x_connections', 0);
         Http::assertSent(fn (Request $request): bool => $request->url() === 'https://api.x.com/2/oauth2/revoke'

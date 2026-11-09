@@ -19,12 +19,13 @@ class GoogleAnalyticsSettingsTest extends TestCase
     public function test_only_administrators_can_open_google_analytics_settings(): void
     {
         $user = User::factory()->create(['is_admin' => false]);
+        $site = Site::factory()->create();
 
-        $this->get(route('settings.google-analytics.edit'))
+        $this->get(route('google-analytics.settings.edit', $site))
             ->assertRedirect(route('login'));
 
         $this->actingAs($user)
-            ->get(route('settings.google-analytics.edit'))
+            ->get(route('google-analytics.settings.edit', $site))
             ->assertForbidden();
 
         $admin = User::factory()->administrator()->create();
@@ -32,8 +33,10 @@ class GoogleAnalyticsSettingsTest extends TestCase
         config()->set('services.google_analytics.redirect_uri', 'https://dashboard.example.com/integrations/google-analytics/callback');
 
         $this->actingAs($admin)
-            ->get(route('settings.google-analytics.edit'))
+            ->get(route('google-analytics.settings.edit', $site))
             ->assertOk()
+            ->assertSee(route('sites.edit', $site).'#integrations-heading', false)
+            ->assertSee(route('google-search-console.settings.edit', $site), false)
             ->assertSee('Sei già nella schermata giusta')
             ->assertSee('Configura schermata di consenso')
             ->assertSee('Ignora invece')
@@ -51,9 +54,10 @@ class GoogleAnalyticsSettingsTest extends TestCase
         config()->set('services.google_analytics.redirect_uri', 'http://monitor.test/integrations/google-analytics/callback');
 
         $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
 
         $this->actingAs($admin)
-            ->get(route('settings.google-analytics.edit'))
+            ->get(route('google-analytics.settings.edit', $site))
             ->assertOk()
             ->assertSee('http://monitor.test/integrations/google-analytics/callback')
             ->assertSee('Copia URI')
@@ -67,14 +71,15 @@ class GoogleAnalyticsSettingsTest extends TestCase
         config()->set('services.google_analytics.redirect_uri', 'https://monitor.test/integrations/google-analytics/callback');
 
         $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
 
         $this->actingAs($admin)
-            ->put(route('settings.google-analytics.update'), [
+            ->put(route('google-analytics.settings.update', $site), [
                 'client_id' => 'client-id.apps.googleusercontent.com',
                 'client_secret' => 'client-secret',
             ])
-            ->assertRedirect(route('settings.google-analytics.edit'))
-            ->assertSessionHas('status', 'Credenziali Google Analytics salvate in forma cifrata. Completa un collegamento per verificarle.')
+            ->assertRedirect(route('sites.edit', $site))
+            ->assertSessionHas('status', 'Credenziali Google Analytics salvate. Ora puoi collegare l’account Google.')
             ->assertSessionMissing('integration_error');
 
         $this->assertDatabaseHas('integration_settings', [
@@ -83,7 +88,7 @@ class GoogleAnalyticsSettingsTest extends TestCase
         ]);
     }
 
-    public function test_administrator_can_save_encrypted_credentials_from_the_dashboard(): void
+    public function test_administrator_can_save_shared_encrypted_credentials_from_a_site(): void
     {
         $this->useDatabaseCredentials();
 
@@ -91,10 +96,9 @@ class GoogleAnalyticsSettingsTest extends TestCase
         $site = Site::factory()->create();
 
         $this->actingAs($admin)
-            ->put(route('settings.google-analytics.update'), [
+            ->put(route('google-analytics.settings.update', $site), [
                 'client_id' => 'database-client-id.apps.googleusercontent.com',
                 'client_secret' => 'database-client-secret',
-                'return_site_id' => $site->id,
             ])
             ->assertRedirect(route('sites.edit', $site))
             ->assertSessionHas('status', 'Credenziali Google Analytics salvate. Ora puoi collegare l’account Google.');
@@ -112,8 +116,13 @@ class GoogleAnalyticsSettingsTest extends TestCase
         $this->assertStringNotContainsString('database-client-id', $storedConfiguration);
         $this->assertStringNotContainsString('database-client-secret', $storedConfiguration);
 
-        $this->actingAs($admin)
-            ->get(route('settings.google-analytics.edit'))
+        $otherSite = Site::factory()->create();
+
+        $this->get(route('sites.edit', $otherSite))
+            ->assertOk()
+            ->assertSee(route('google-analytics.settings.edit', $otherSite), false);
+
+        $this->get(route('google-analytics.settings.edit', $otherSite))
             ->assertOk()
             ->assertSee('database-client-id.apps.googleusercontent.com')
             ->assertDontSee('database-client-secret');
@@ -124,14 +133,15 @@ class GoogleAnalyticsSettingsTest extends TestCase
         $this->useDatabaseCredentials();
 
         $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
         $setting = $this->createSetting($admin);
 
         $this->actingAs($admin)
-            ->put(route('settings.google-analytics.update'), [
+            ->put(route('google-analytics.settings.update', $site), [
                 'client_id' => 'saved-client-id.apps.googleusercontent.com',
                 'client_secret' => '',
             ])
-            ->assertRedirect(route('settings.google-analytics.edit'));
+            ->assertRedirect(route('sites.edit', $site));
 
         $this->assertSame('saved-client-secret', $setting->fresh()->configuration['client_secret']);
     }
@@ -142,9 +152,10 @@ class GoogleAnalyticsSettingsTest extends TestCase
         config()->set('services.google_analytics.client_secret', 'environment-client-secret');
 
         $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
 
         $this->actingAs($admin)
-            ->get(route('settings.google-analytics.edit'))
+            ->get(route('google-analytics.settings.edit', $site))
             ->assertOk()
             ->assertSee('Gestite dall’ambiente')
             ->assertDontSee('environment-client-id')
@@ -152,7 +163,7 @@ class GoogleAnalyticsSettingsTest extends TestCase
             ->assertDontSee('name="client_secret"', false);
 
         $this->actingAs($admin)
-            ->put(route('settings.google-analytics.update'), [
+            ->put(route('google-analytics.settings.update', $site), [
                 'client_id' => 'attempted-client-id',
                 'client_secret' => 'attempted-client-secret',
             ])
@@ -166,6 +177,7 @@ class GoogleAnalyticsSettingsTest extends TestCase
         $this->useDatabaseCredentials();
 
         $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
         $setting = $this->createSetting($admin);
 
         GoogleAnalyticsConnection::query()->create([
@@ -176,7 +188,7 @@ class GoogleAnalyticsSettingsTest extends TestCase
         ]);
 
         $this->actingAs($admin)
-            ->put(route('settings.google-analytics.update'), [
+            ->put(route('google-analytics.settings.update', $site), [
                 'client_id' => 'different-client-id.apps.googleusercontent.com',
                 'client_secret' => 'replacement-secret',
             ])
@@ -185,7 +197,7 @@ class GoogleAnalyticsSettingsTest extends TestCase
         $this->assertSame('saved-client-id.apps.googleusercontent.com', $setting->fresh()->configuration['client_id']);
 
         $this->actingAs($admin)
-            ->delete(route('settings.google-analytics.destroy'))
+            ->delete(route('google-analytics.settings.destroy', $site))
             ->assertSessionHas('integration_error');
 
         $this->assertDatabaseCount('integration_settings', 1);

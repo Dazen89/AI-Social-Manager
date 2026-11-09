@@ -23,6 +23,7 @@ class SiteAnalyticsOverviewController extends Controller
         $site->load('googleAnalyticsProperty.connection', 'googleSearchConsoleProperty.connection');
         $property = $site->googleAnalyticsProperty;
         $searchProperty = $site->googleSearchConsoleProperty;
+        $searchConnection = $searchProperty?->connection;
         $overview = null;
         $reportError = null;
         $searchOverview = null;
@@ -38,12 +39,14 @@ class SiteAnalyticsOverviewController extends Controller
             }
         }
 
-        if ($searchProperty?->connection?->status === 'active') {
+        if ($searchConnection?->canLoadReports()) {
             try {
                 $searchOverview = $searchReports->overview($searchProperty, $site->host, $days);
             } catch (GoogleSearchConsoleException $exception) {
                 $searchReportError = $exception->getMessage();
             }
+        } elseif ($searchConnection?->status === 'error') {
+            $searchReportError = $searchConnection->last_error ?: 'Il collegamento Search Console richiede una nuova autorizzazione.';
         }
 
         return view('sites.show', [
@@ -52,7 +55,7 @@ class SiteAnalyticsOverviewController extends Controller
             'analyticsIsConnected' => $property?->connection?->status === 'active',
             'overview' => $overview,
             'reportError' => $reportError,
-            'searchIsConnected' => $searchProperty?->connection?->status === 'active',
+            'searchIsConnected' => $searchConnection?->status === 'active',
             'searchOverview' => $searchOverview,
             'searchReportError' => $searchReportError,
             'days' => $days,

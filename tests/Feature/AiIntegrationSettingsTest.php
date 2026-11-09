@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AiIntegration;
 use App\Models\AiUsageRecord;
+use App\Models\Site;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -225,17 +226,23 @@ class AiIntegrationSettingsTest extends TestCase
         $this->assertTrue($replacement->fresh()->is_active);
     }
 
-    public function test_dashboard_links_to_the_summary_and_shows_the_active_integration(): void
+    public function test_dashboard_shows_ai_as_connected_only_when_the_active_integration_is_verified(): void
     {
         $admin = User::factory()->administrator()->create();
-        $this->createIntegration($admin, name: 'Claude principale', isActive: true);
+        Site::factory()->create();
+        $active = $this->createIntegration($admin, isActive: true);
+        $this->createIntegration($admin, name: 'Claude di riserva')->update(['status' => 'verified']);
 
         $this->actingAs($admin)
             ->get(route('dashboard'))
             ->assertOk()
-            ->assertSee(route('settings.ai.index'), false)
-            ->assertSee('Claude principale')
-            ->assertSee('Claude Sonnet 5.5');
+            ->assertSee('aria-label="AI — Non collegato"', false);
+
+        $active->update(['status' => 'verified']);
+
+        $this->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('href="'.route('settings.ai.index').'" title="AI — Collegato" aria-label="AI — Collegato"', false);
     }
 
     public function test_integration_summary_shows_recorded_token_usage_without_claiming_an_exact_cost(): void

@@ -22,8 +22,12 @@ class GoogleSearchConsoleReportService
     {
         $connection = $property->connection;
 
-        if (! $connection || $connection->status !== 'active') {
+        if (! $connection?->canLoadReports()) {
             throw new GoogleSearchConsoleException('Il collegamento Search Console non è attivo. Collega nuovamente l’account.');
+        }
+
+        if ($connection->status !== 'active') {
+            $this->searchConsole->validAccessToken($connection);
         }
 
         // Search Console uses Pacific Time. Leave a margin for finalized daily data.

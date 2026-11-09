@@ -197,9 +197,7 @@ class GoogleAnalyticsOAuthTest extends TestCase
     public function test_cancelling_property_selection_removes_the_pending_connection(): void
     {
         $this->configureOAuth();
-        Http::fake([
-            'https://oauth2.googleapis.com/revoke' => Http::response([], 200),
-        ]);
+        Http::fake();
 
         $admin = User::factory()->administrator()->create();
         $site = Site::factory()->create();
@@ -216,6 +214,7 @@ class GoogleAnalyticsOAuthTest extends TestCase
 
         $this->assertDatabaseCount('google_analytics_connections', 0);
         $this->assertNull(session('google_analytics_selection'));
+        Http::assertNothingSent();
     }
 
     public function test_expired_access_token_is_refreshed_before_loading_properties(): void

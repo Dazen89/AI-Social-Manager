@@ -23,7 +23,7 @@ class GoogleAnalyticsConnectionController extends Controller
                 ->with('integration_error', 'Prima di collegare Google Analytics configura le credenziali OAuth dell’installazione.');
         }
 
-        $this->discardPendingSelection($request, $site, $analytics);
+        $this->discardPendingSelection($request, $site);
 
         $state = Str::random(64);
 
@@ -171,7 +171,9 @@ class GoogleAnalyticsConnectionController extends Controller
                 ]);
             });
 
-            $this->removeUnusedConnection($previousConnectionId, $connection->id, $analytics);
+            if ($previousConnectionId !== $connection->id) {
+                $this->removeUnusedConnection($previousConnectionId);
+            }
         } catch (GoogleAnalyticsException $exception) {
             return back()->with('integration_error', $exception->getMessage());
         } catch (Throwable $exception) {
@@ -189,9 +191,9 @@ class GoogleAnalyticsConnectionController extends Controller
         return redirect()->route('sites.edit', $site)->with('status', $message);
     }
 
-    public function cancel(Request $request, Site $site, GoogleAnalyticsService $analytics): RedirectResponse
+    public function cancel(Request $request, Site $site): RedirectResponse
     {
-        $this->discardPendingSelection($request, $site, $analytics);
+        $this->discardPendingSelection($request, $site);
 
         return redirect()
             ->route('sites.edit', $site)
@@ -250,42 +252,21 @@ class GoogleAnalyticsConnectionController extends Controller
             ->first();
     }
 
-    private function removeUnusedConnection(?int $previousConnectionId, int $currentConnectionId, GoogleAnalyticsService $analytics): void
+    private function removeUnusedConnection(?int $connectionId): void
     {
-        if (! $previousConnectionId || $previousConnectionId === $currentConnectionId) {
+        if ($connectionId === null) {
             return;
         }
 
-        $connection = GoogleAnalyticsConnection::query()->find($previousConnectionId);
-
-        if (! $connection || $connection->properties()->exists()) {
-            return;
-        }
-
-        try {
-            $analytics->revoke($connection);
-        } catch (Throwable $exception) {
-            report($exception);
-        }
-
-        $connection->delete();
+        // Google revokes access for the entire project. Only an explicit disconnect revokes it.
+        GoogleAnalyticsConnection::query()->whereKey($connectionId)->doesntHave('properties')->delete();
     }
 
-    private function discardPendingSelection(Request $request, Site $site, GoogleAnalyticsService $analytics): void
+    private function discardPendingSelection(Request $request, Site $site): void
     {
         $connection = $this->selectionConnection($request, $site);
         $request->session()->forget('google_analytics_selection');
 
-        if (! $connection || $connection->properties()->exists()) {
-            return;
-        }
-
-        try {
-            $analytics->revoke($connection);
-        } catch (Throwable $exception) {
-            report($exception);
-        }
-
-        $connection->delete();
+        $this->removeUnusedConnection($connection?->id);
     }
 }
