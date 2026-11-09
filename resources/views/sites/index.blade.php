@@ -1,77 +1,69 @@
-@extends('layouts.app')
+@extends('layouts.workspace')
 
 @section('title', 'Siti — '.config('app.name', 'Monitoring Hub'))
 
-@section('content')
-    @include('partials.navigation')
-
-    <main class="mx-auto max-w-6xl px-6 py-10">
-        <div class="mb-8 flex flex-wrap items-start justify-between gap-4">
-            <div>
-                <p class="text-sm font-semibold uppercase tracking-[0.2em] text-sky-400">Monitoraggio</p>
-                <h1 class="mt-2 text-3xl font-semibold">Siti</h1>
-                <p class="mt-2 text-slate-400">Registra i siti autorizzati e scegli per ciascuno quali servizi collegare.</p>
-            </div>
-
-            <a href="{{ route('sites.create') }}" class="inline-flex rounded-xl bg-sky-500 px-5 py-3 font-semibold text-slate-950 no-underline transition hover:bg-sky-400">Aggiungi sito</a>
-        </div>
+@section('page')
+    <main id="main-content" class="ui-page" tabindex="-1">
+        <x-page-header title="Siti" kicker="Monitoraggio" description="Registra i siti autorizzati e scegli per ciascuno quali servizi collegare.">
+            <x-slot:actions><a href="{{ route('sites.create') }}" class="ui-button ui-button-primary"><x-icon name="plus" /> Aggiungi sito</a></x-slot:actions>
+        </x-page-header>
 
         @if (session('status'))
-            <div class="mb-6 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200" role="status">{{ session('status') }}</div>
+            <div class="mb-6 ui-alert ui-tone-success" role="status">{{ session('status') }}</div>
         @endif
 
         @if (session('integration_error'))
-            <div class="mb-6 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200" role="alert">{{ session('integration_error') }}</div>
+            <div class="mb-6 ui-alert ui-tone-danger" role="alert">{{ session('integration_error') }}</div>
         @endif
 
         @if ($sites->isEmpty())
-            <section class="rounded-3xl border border-dashed border-slate-700 bg-slate-900/50 p-10 text-center">
-                <h2 class="text-xl font-semibold">Nessun sito registrato</h2>
-                <p class="mt-2 text-slate-400">Aggiungi il primo sito che possiedi o sei autorizzato a monitorare.</p>
+            <section class="ui-empty">
+                <div class="mx-auto mb-3 grid size-10 place-items-center rounded-lg bg-accent-soft text-accent-ink"><x-icon name="globe" /></div>
+                <h2>Nessun sito registrato</h2>
+                <p class="mt-2 text-muted">Aggiungi il primo sito che possiedi o sei autorizzato a monitorare.</p>
             </section>
         @else
-            <div class="grid gap-4">
+            <section class="ui-panel" aria-labelledby="sites-heading">
+                <div class="ui-panel-heading ui-actions"><h2 id="sites-heading">Siti registrati</h2> <span class="ui-badge">{{ $sites->total() }}</span></div>
                 @foreach ($sites as $site)
-                    <article class="rounded-2xl border border-slate-800 bg-slate-900 p-6">
-                        <div class="flex flex-wrap items-start justify-between gap-4">
-                            <div>
-                                <div class="flex flex-wrap items-center gap-3">
-                                    <h2 class="text-xl font-semibold">
-                                        <a href="{{ route('sites.show', $site) }}" class="text-slate-100 no-underline hover:text-sky-300">{{ $site->name }}</a>
-                                    </h2>
-                                    <span class="rounded-full px-2.5 py-1 text-xs font-medium {{ $site->is_active ? 'bg-emerald-400/10 text-emerald-300' : 'bg-slate-700 text-slate-300' }}">{{ $site->is_active ? 'Attivo' : 'Sospeso' }}</span>
-                                </div>
-                                <a href="{{ $site->base_url }}" target="_blank" rel="noopener noreferrer" class="mt-2 inline-block text-sm text-sky-400">{{ $site->host }}</a>
+                    <article class="ui-site-row">
+                        <div>
+                            <div class="ui-actions">
+                                <h3 class="font-semibold">
+                                    <a href="{{ route('sites.show', $site) }}" class="text-ink no-underline hover:text-accent-ink">{{ $site->name }}</a>
+                                </h3>
+                                <span class="ui-badge {{ $site->is_active ? 'ui-tone-success' : '' }}">{{ $site->is_active ? 'Attivo' : 'Sospeso' }}</span>
                             </div>
-
-                            <div class="flex flex-wrap gap-2">
-                                <a href="{{ route('sites.show', $site) }}" class="rounded-lg bg-sky-500 px-4 py-2 text-sm font-semibold text-slate-950 no-underline hover:bg-sky-400">Apri panoramica</a>
-                                <a href="{{ route('sites.edit', $site) }}" class="rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 no-underline hover:border-slate-500">Gestisci</a>
-                            </div>
+                            <a href="{{ $site->base_url }}" target="_blank" rel="noopener noreferrer" class="mt-1 inline-block text-sm text-muted">{{ $site->host }} ↗</a>
                         </div>
 
-                        <div class="mt-5 border-t border-slate-800 pt-5">
+                        <div class="space-y-1.5">
                             @if ($site->googleAnalyticsProperty)
                                 @if ($site->googleAnalyticsProperty->connection?->status === 'active')
-                                    <p class="text-sm font-medium text-emerald-300">Google Analytics collegato: {{ $site->googleAnalyticsProperty->property_name ?: $site->googleAnalyticsProperty->property_id }}</p>
+                                    <p class="text-sm font-medium text-success-ink">Google Analytics collegato: {{ $site->googleAnalyticsProperty->property_name ?: $site->googleAnalyticsProperty->property_id }}</p>
                                 @else
-                                    <p class="text-sm font-medium text-amber-300">Google Analytics: configurazione precedente non verificata</p>
+                                    <p class="text-sm font-medium text-warning-ink">Google Analytics: configurazione precedente non verificata</p>
                                 @endif
                             @else
-                                <p class="text-sm text-slate-400">Google Analytics non collegato.</p>
+                                <p class="text-sm text-muted">Google Analytics non collegato.</p>
                             @endif
 
                             @if ($site->googleSearchConsoleProperty?->connection?->status === 'active')
-                                <p class="mt-2 text-sm font-medium text-emerald-300">Search Console collegata: {{ $site->googleSearchConsoleProperty->property_url }}</p>
+                                <p class="text-sm font-medium text-success-ink">Search Console collegata: {{ $site->googleSearchConsoleProperty->property_url }}</p>
                             @else
-                                <p class="mt-2 text-sm text-slate-400">Google Search Console non collegata.</p>
+                                <p class="text-sm text-muted">Google Search Console non collegata.</p>
                             @endif
+                        </div>
+
+                        <div class="ui-actions">
+                            <a href="{{ route('sites.show', $site) }}" class="ui-button ui-button-small">Apri panoramica <x-icon name="arrow" /></a>
+                            <a href="{{ route('sites.edit', $site) }}" class="ui-button ui-button-small">Gestisci</a>
                         </div>
                     </article>
                 @endforeach
-            </div>
+            </section>
 
-            <div class="mt-8">{{ $sites->links() }}</div>
+            <div class="mt-6">{{ $sites->links() }}</div>
         @endif
     </main>
 @endsection

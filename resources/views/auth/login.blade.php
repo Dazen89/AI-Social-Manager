@@ -1,58 +1,45 @@
 @extends('layouts.app')
 
-@section('title', 'Accedi — '.config('app.name', 'AI Social Manager'))
+@section('title', 'Accedi — AI Social Manager')
 
 @section('content')
-    <main class="flex min-h-screen items-center justify-center px-6 py-12">
-        <section class="w-full max-w-md rounded-3xl border border-slate-800 bg-slate-900/80 p-8 shadow-2xl shadow-sky-950/30 backdrop-blur">
-            <div class="mb-8">
-                <p class="mb-3 text-sm font-semibold uppercase tracking-[0.2em] text-sky-400">AI Social Manager</p>
-                <h1 class="text-3xl font-semibold tracking-tight">Accedi al servizio</h1>
-                <p class="mt-3 text-sm leading-6 text-slate-400">L’area è riservata agli amministratori autorizzati.</p>
-            </div>
+    <main class="ui-auth">
+        <div class="ui-auth-stack">
+            <x-brand />
+            <section class="ui-panel ui-auth-panel" aria-labelledby="login-title">
+                <p class="ui-kicker">Area riservata</p>
+                <h1 id="login-title" class="ui-page-title">Accedi al servizio</h1>
+                <p class="ui-page-description">L’area è riservata agli amministratori autorizzati.</p>
 
-            <form method="POST" action="{{ route('login.store') }}" class="space-y-5">
-                @csrf
+                <form method="POST" action="{{ route('login.store') }}">
+                    @csrf
 
-                <div>
-                    <label for="email" class="mb-2 block text-sm font-medium text-slate-300">Email</label>
-                    <input
-                        id="email"
-                        name="email"
-                        type="email"
-                        value="{{ old('email') }}"
-                        required
-                        autofocus
-                        autocomplete="username"
-                    >
-                    @error('email')
-                        <p class="mt-2 text-sm text-rose-400" role="alert">{{ $message }}</p>
-                    @enderror
-                </div>
+                    <div>
+                        <label for="email">Email</label>
+                        <input id="email" name="email" type="email" value="{{ old('email') }}" required autofocus autocomplete="username"
+                            @error('email') aria-invalid="true" aria-describedby="email-error" @enderror>
+                        @error('email')
+                            <p id="email-error" class="mt-2 ui-error-text" role="alert">{{ $message }}</p>
+                        @enderror
+                    </div>
 
-                <div>
-                    <label for="password" class="mb-2 block text-sm font-medium text-slate-300">Password</label>
-                    <input
-                        id="password"
-                        name="password"
-                        type="password"
-                        required
-                        autocomplete="current-password"
-                    >
-                    @error('password')
-                        <p class="mt-2 text-sm text-rose-400" role="alert">{{ $message }}</p>
-                    @enderror
-                </div>
+                    <div>
+                        <label for="password">Password</label>
+                        <input id="password" name="password" type="password" required autocomplete="current-password"
+                            @error('password') aria-invalid="true" aria-describedby="password-error" @enderror>
+                        @error('password')
+                            <p id="password-error" class="mt-2 ui-error-text" role="alert">{{ $message }}</p>
+                        @enderror
+                    </div>
 
-                <label class="flex items-center gap-3 text-sm text-slate-400">
-                    <input name="remember" type="checkbox" class="size-4 rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500">
-                    Ricordami su questo dispositivo
-                </label>
+                    <label class="ui-remember">
+                        <input name="remember" type="checkbox" class="size-4">
+                        Ricordami su questo dispositivo
+                    </label>
 
-                <button type="submit" class="w-full rounded-xl bg-sky-500 px-4 py-3 font-semibold text-slate-950 transition hover:bg-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-300 focus:ring-offset-2 focus:ring-offset-slate-900">
-                    Accedi
-                </button>
-            </form>
-        </section>
+                    <button type="submit" class="ui-button ui-button-primary">Accedi</button>
+                </form>
+            </section>
+        </div>
     </main>
 @endsection

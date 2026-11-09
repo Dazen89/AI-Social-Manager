@@ -1,18 +1,14 @@
-@extends('layouts.app')
+@extends('layouts.workspace')
 
 @section('title', 'Aggiungi sito — '.config('app.name', 'Monitoring Hub'))
 
-@section('content')
-    @include('partials.navigation')
+@section('page')
+    <main id="main-content" class="ui-page ui-page-narrow" tabindex="-1">
+        <x-page-header title="Aggiungi un sito" description="Prima registra il sito. Nel passaggio successivo potrai scegliere quali servizi collegare.">
+            <x-slot:back><a href="{{ route('sites.index') }}">← Torna ai siti</a></x-slot:back>
+        </x-page-header>
 
-    <main class="mx-auto max-w-4xl px-6 py-10">
-        <div class="mb-8">
-            <a href="{{ route('sites.index') }}" class="text-sm text-sky-400">← Torna ai siti</a>
-            <h1 class="mt-4 text-3xl font-semibold">Aggiungi un sito</h1>
-            <p class="mt-2 text-slate-400">Prima registra il sito. Nel passaggio successivo potrai scegliere quali servizi collegare.</p>
-        </div>
-
-        <section class="rounded-3xl border border-slate-800 bg-slate-900 p-8">
+        <section class="ui-panel p-5 sm:p-7">
             <form method="POST" action="{{ route('sites.store') }}" class="space-y-8">
                 @csrf
                 @include('sites.partials.form', ['submitLabel' => 'Salva e continua'])

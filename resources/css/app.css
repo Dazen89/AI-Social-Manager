@@ -1,25 +1,30 @@
 @import 'tailwindcss';
+@import './design.css';
 
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
-@source '../../storage/framework/views/*.php';
 @source '../**/*.blade.php';
 @source '../**/*.js';
 
-@theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-        'Segoe UI Symbol', 'Noto Color Emoji';
-}
+@custom-variant dark (&:where(.dark, .dark *));
 
-@layer base {
-    body {
-        @apply min-h-screen bg-slate-950 text-slate-100 antialiased;
-    }
-
-    input[type='email'],
-    input[type='password'],
-    input[type='text'],
-    input[type='url'],
-    select {
-        @apply block w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20;
-    }
+@theme inline {
+    --font-sans: var(--ui-font);
+    --color-ink: var(--ui-ink);
+    --color-muted: var(--ui-muted);
+    --color-soft: var(--ui-soft);
+    --color-line: var(--ui-line);
+    --color-line-strong: var(--ui-line-strong);
+    --color-surface: var(--ui-surface);
+    --color-canvas: var(--ui-canvas);
+    --color-subtle: var(--ui-subtle);
+    --color-accent: var(--ui-primary);
+    --color-accent-hover: var(--ui-primary-hover);
+    --color-accent-ink: var(--ui-primary-hover);
+    --color-accent-soft: var(--ui-primary-soft);
+    --color-success-ink: var(--ui-success-ink);
+    --color-success-soft: var(--ui-success-soft);
+    --color-danger-ink: var(--ui-danger-ink);
+    --color-danger-soft: var(--ui-danger-soft);
+    --color-warning-ink: var(--ui-warning-ink);
+    --color-warning-soft: var(--ui-warning-soft);
 }
