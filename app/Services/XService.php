@@ -12,6 +12,8 @@ class XService
 {
     private const CREATE_POST_ENDPOINT = 'https://api.x.com/2/tweets';
 
+    private const UPLOAD_MEDIA_ENDPOINT = 'https://api.x.com/2/media/upload';
+
     private const AUTHORIZATION_ENDPOINT = 'https://x.com/i/oauth2/authorize';
 
     private const TOKEN_ENDPOINT = 'https://api.x.com/2/oauth2/token';
@@ -103,7 +105,7 @@ class XService
 
         $scope = (string) ($tokens['scope'] ?? '');
         $grantedScopes = preg_split('/\s+/', trim($scope)) ?: [];
-        $missingScopes = array_diff($this->scopes(), $grantedScopes);
+        $missingScopes = array_diff($this->scopes(), $grantedScopes, ['media.write']);
 
         if ($missingScopes !== []) {
             $this->markDatabaseCredentialsError('X non ha concesso tutti i permessi necessari alla pubblicazione automatica.');
@@ -188,11 +190,38 @@ class XService
         return $connection->access_token;
     }
 
-    public function createPost(XConnection $connection, string $text): string
+    public function uploadImage(XConnection $connection, string $bytes): string
     {
         $response = Http::withToken($this->validAccessToken($connection))
             ->acceptJson()->timeout(15)
-            ->post(self::CREATE_POST_ENDPOINT, ['text' => $text]);
+            ->post(self::UPLOAD_MEDIA_ENDPOINT, [
+                'media' => base64_encode($bytes),
+                'media_category' => 'tweet_image',
+            ]);
+
+        $id = $response->json('data.id');
+        $state = $response->json('data.processing_info.state');
+
+        if (! $response->successful() || ! is_string($id) || ! ctype_digit($id)
+            || ($state !== null && $state !== 'succeeded')) {
+            throw new XApiException('X non ha confermato il caricamento dell’immagine.');
+        }
+
+        return $id;
+    }
+
+    /** @param list<string> $mediaIds */
+    public function createPost(XConnection $connection, string $text, array $mediaIds = []): string
+    {
+        $payload = ['text' => $text];
+
+        if ($mediaIds !== []) {
+            $payload['media'] = ['media_ids' => $mediaIds];
+        }
+
+        $response = Http::withToken($this->validAccessToken($connection))
+            ->acceptJson()->timeout(15)
+            ->post(self::CREATE_POST_ENDPOINT, $payload);
 
         $id = $response->json('data.id');
 
@@ -215,6 +244,7 @@ class XService
             throw new XApiException('Le metriche del post X non sono disponibili.');
         }
 
+        $metrics['repost_count'] = $metrics['retweet_count'] ?? $metrics['repost_count'] ?? null;
         $allowed = ['impression_count', 'like_count', 'reply_count', 'repost_count', 'quote_count', 'bookmark_count'];
         $result = [];
 

@@ -295,6 +295,63 @@ class SiteEditorialPlanTest extends TestCase
         $this->assertFalse($source->fresh()->is_active);
     }
 
+    public function test_inactive_sources_are_hidden_from_the_plan_except_for_published_history(): void
+    {
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create(['base_url' => 'https://example.test', 'host' => 'example.test']);
+        $source = $site->editorialSources()->create([
+            'provider' => 'foolslide',
+            'name' => 'Archivio',
+            'base_url' => $site->base_url,
+            'is_active' => true,
+            'verification_status' => 'verified',
+        ]);
+        $proposals = [];
+
+        foreach (['draft', 'approved', 'published'] as $status) {
+            $url = 'https://example.test/read/'.$status;
+            $content = $source->contents()->create([
+                'site_id' => $site->id,
+                'external_id' => $status,
+                'series_title' => 'Serie di prova',
+                'title' => 'Capitolo '.$status,
+                'public_url' => $url,
+                'eligibility_status' => 'eligible',
+                'last_seen_at' => now(),
+            ]);
+            $proposals[$status] = $site->editorialProposals()->create([
+                'editorial_content_id' => $content->id,
+                'status' => $status,
+                'post_text' => 'Leggi il capitolo '.$url,
+                'rationale' => 'Proposta di prova.',
+                'proposed_for' => now(),
+            ]);
+        }
+
+        $plan = route('sites.editorial-plan.show', $site);
+        $this->actingAs($admin)->get($plan)
+            ->assertOk()
+            ->assertSee('href="#proposal-'.$proposals['draft']->id.'"', false);
+
+        $this->patch(route('sites.editorial-plan.sources.toggle', [$site, $source]))
+            ->assertSessionHas('status', 'Fonte disattivata.');
+
+        $this->get($plan)
+            ->assertOk()
+            ->assertDontSee('#proposal-'.$proposals['draft']->id, false)
+            ->assertDontSee('https://example.test/read/draft', false)
+            ->assertDontSee('https://example.test/read/approved', false)
+            ->assertSee('Fonte disattivata')
+            ->assertSee('href="#proposal-'.$proposals['published']->id.'"', false);
+
+        $this->assertSame('draft', $proposals['draft']->fresh()->status);
+        $this->assertSame('approved', $proposals['approved']->fresh()->status);
+
+        $this->patch(route('sites.editorial-plan.sources.toggle', [$site, $source]))
+            ->assertSessionHas('status', 'Fonte attivata.');
+        $this->get($plan)->assertSee('href="#proposal-'.$proposals['draft']->id.'"', false);
+    }
+
     public function test_administrator_can_correct_a_source_but_not_edit_another_sites_source(): void
     {
         $admin = User::factory()->administrator()->create();

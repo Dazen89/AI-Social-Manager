@@ -89,3 +89,51 @@ if (typeof confirmation?.showModal === 'function') {
         pending = null;
     });
 }
+
+const imagePreviews = document.querySelectorAll('[data-image-preview]');
+
+async function loadImagePreview(preview) {
+    try {
+        const response = await fetch(preview.dataset.imagePreview, { redirect: 'error' });
+        if (response.ok) {
+            preview.innerHTML = await response.text();
+        }
+    } catch {
+        preview.textContent = 'Anteprima immagini non disponibile.';
+    }
+}
+
+if (imagePreviews.length && 'IntersectionObserver' in window) {
+    const observer = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+            if (entry.isIntersecting) {
+                observer.unobserve(entry.target);
+                loadImagePreview(entry.target);
+            }
+        }
+    }, { rootMargin: '150px' });
+
+    imagePreviews.forEach((preview) => observer.observe(preview));
+} else {
+    imagePreviews.forEach(loadImagePreview);
+}
+
+const imagePicker = document.querySelector('[data-image-limit]');
+
+if (imagePicker) {
+    const images = Array.from(imagePicker.querySelectorAll('input[name="image_ids[]"]'));
+    const limit = Number(imagePicker.dataset.imageLimit);
+    const counter = imagePicker.querySelector('[data-image-count]');
+
+    function updateSelection() {
+        const selected = images.filter((image) => image.checked).length;
+
+        images.forEach((image) => {
+            image.disabled = selected >= limit && !image.checked;
+        });
+        counter.textContent = `${selected} su ${limit} immagini selezionate`;
+    }
+
+    imagePicker.addEventListener('change', updateSelection);
+    updateSelection();
+}

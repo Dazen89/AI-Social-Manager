@@ -158,7 +158,9 @@ Documentazione ufficiale:
 
 ## Collegamento dell’account X
 
-La pagina **Social** guida un amministratore nella configurazione di un’app X e nel collegamento dell’unico account che pubblicherà per questa installazione. Il flusso usa OAuth 2.0 Authorization Code con PKCE e richiede soltanto `tweet.read`, `tweet.write`, `users.read` e `offline.access`. Client Secret, access token e refresh token sono cifrati nel database; password, email e messaggi privati dell’account non vengono richiesti.
+La pagina **Social** guida un amministratore nella configurazione di un’app X e nel collegamento dell’unico account che pubblicherà per questa installazione. Il flusso usa OAuth 2.0 Authorization Code con PKCE e richiede `tweet.read`, `tweet.write`, `users.read` e `offline.access`, con `media.write` per gli allegati. Client Secret, access token e refresh token sono cifrati nel database.
+
+Nel piano editoriale, l’anteprima mostra fino a tre pagine casuali del capitolo. In **Scegli immagini** puoi selezionare fino a quattro pagine e confermarne l’idoneità prima di approvare la proposta. Per un account X già collegato, usa **Ricollega per le immagini** per concedere `media.write`. Il worker ricontrolla i file approvati prima del caricamento su X.
 
 Per configurare il collegamento:
 

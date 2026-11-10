@@ -21,8 +21,48 @@
             <form method="POST" action="{{ route('sites.editorial-plan.run', $site) }}" class="ui-actions mt-4">
                 @csrf
                 <button type="submit" class="ui-button ui-button-primary">Analizza ora</button>
-                <span class="text-xs text-muted">Avvia in background la lettura delle fonti e l’analisi AI; il calendario si aggiorna al completamento.</span>
+                <a href="{{ request()->fullUrl() }}" class="ui-button">Ricarica lo stato</a>
+                <span class="text-xs text-muted">Il worker di coda elabora la richiesta in background.</span>
             </form>
+
+            <dl class="mt-4 grid gap-4 rounded-xl border border-line bg-subtle p-4 text-sm sm:grid-cols-3">
+                <div>
+                    <dt class="text-muted">Ultimo aggiornamento riuscito</dt>
+                    <dd class="mt-1">
+                        <span class="font-semibold">{{ $schedule?->last_run_at?->setTimezone($timezone)->format('d/m/Y H:i') ?? 'Mai completato' }}</span>
+                        @if ($schedule?->last_run_at)
+                            <span class="mt-1 block text-xs text-muted">{{ $schedule->last_imported_count }} nuove uscite, {{ $schedule->last_proposal_count }} proposte elaborate.</span>
+                        @endif
+                    </dd>
+                </div>
+                <div>
+                    <dt class="text-muted">Ultimo tentativo avviato</dt>
+                    <dd class="mt-1">
+                        <span class="font-semibold">{{ $schedule?->last_attempt_at?->setTimezone($timezone)->format('d/m/Y H:i') ?? 'Mai avviato' }}</span>
+                        @if ($schedule?->running_started_at?->isAfter(now()->subMinutes(10)))
+                            <span class="mt-1 block text-xs text-accent-ink" role="status">Analisi in corso</span>
+                        @endif
+                    </dd>
+                </div>
+                <div>
+                    <dt class="text-muted">Prossimo controllo automatico</dt>
+                    <dd class="mt-1 font-semibold">
+                        @if ($schedule?->enabled)
+                            {{ $schedule->next_run_at?->setTimezone($timezone)->format('d/m/Y H:i') ?? 'In attesa' }}
+                            @if ($schedule->next_run_at?->isPast())
+                                <span class="ui-badge ui-tone-warning">In ritardo</span>
+                            @endif
+                        @else
+                            Automazione disattivata
+                        @endif
+                    </dd>
+                </div>
+            </dl>
+            <p class="mt-2 text-xs text-muted">Orari nel fuso {{ $timezone }}.</p>
+            @if ($schedule?->last_error)
+                <p class="mt-2 text-sm text-danger-ink" role="alert">Ultimo tentativo non riuscito: {{ $schedule->last_error }}</p>
+            @endif
+
             @unless ($schedule)
                 <p class="mt-4 ui-alert ui-tone-warning" role="status">Non hai ancora attivato i controlli periodici. Puoi comunque usare “Analizza ora” per creare il piano senza attendere lo Scheduler.</p>
             @endunless
@@ -57,13 +97,6 @@
                     <label class="mt-3 flex items-center gap-2"><input type="checkbox" name="x_autopublish_enabled" value="1" @checked((bool) old('x_autopublish_enabled', $schedule?->x_autopublish_enabled ?? false)) class="rounded border-line-strong">Attiva approvazione AI e pubblicazione automatica</label>
                 </div>
             </form>
-            @if ($schedule?->enabled)
-                <p class="mt-4 text-sm text-soft">Prossimo controllo: {{ $schedule->next_run_at?->setTimezone($timezone)->format('d/m/Y H:i') ?? 'in attesa' }} ({{ $timezone }}). Ultimo controllo riuscito: {{ $schedule->last_run_at?->setTimezone($timezone)->format('d/m/Y H:i') ?? 'non ancora eseguito' }}.</p>
-                @if ($schedule->last_run_at) <p class="mt-1 text-sm text-muted">Ultimo esito: {{ $schedule->last_imported_count }} nuove uscite, {{ $schedule->last_proposal_count }} nuove proposte.</p> @endif
-            @else
-                <p class="mt-4 text-sm text-warning-ink">Automazione disattivata. Servono almeno una fonte verificata e un servizio AI attivo e verificato.</p>
-            @endif
-            @if ($schedule?->last_error) <p class="mt-2 text-sm text-danger-ink" role="alert">Ultimo tentativo non riuscito: {{ $schedule->last_error }}@if ($schedule->enabled) Nuovo tentativo previsto tra 15 minuti.@endif</p> @endif
         </section>
 
         <section class="ui-panel mt-8 p-6 sm:p-8" aria-labelledby="cadence-heading">
@@ -73,7 +106,7 @@
                 <p class="mt-3 text-sm text-soft"><span class="font-semibold">Perché:</span> {{ $cadence->rationale }}</p>
                 <p class="mt-3 text-xs text-muted">Analisi del {{ $cadence->generated_at->setTimezone($timezone)->format('d/m/Y H:i') }}. {{ ($cadence->source_snapshot['google_analytics']['status'] ?? null) === 'available' ? 'GA4 disponibile' : 'GA4 non disponibile' }} · {{ ($cadence->source_snapshot['search_console']['status'] ?? null) === 'available' ? 'Search Console disponibile' : 'Search Console non disponibile' }} · {{ ($cadence->source_snapshot['x_post_metrics']['status'] ?? null) === 'available' ? 'Metriche dei post X disponibili' : 'metriche dei post X non ancora raccolte' }}.</p>
             @else
-                <p class="mt-3 text-sm text-muted">Il piano prevede un post al giorno. La prima analisi AI partirà quando il piano automatico sarà attivo, lo Scheduler avrà eseguito un controllo e saranno presenti capitoli candidabili. Le metriche dei post X non sono ancora raccolte.</p>
+                <p class="mt-3 text-sm text-muted">Il piano prevede un post al giorno. Avvia il primo controllo con «Analizza ora» oppure attiva il piano automatico.</p>
             @endif
         </section>
 
@@ -128,31 +161,53 @@
             @endif
         </section>
 
-        <section class="ui-panel mt-8 p-6 sm:p-8" aria-labelledby="chapters-heading">
-            <h2 id="chapters-heading" class="text-xl font-semibold">Capitoli letti dalle fonti</h2>
-            <p class="mt-2 text-sm text-muted">Gestisci qui le uscite: escludere un capitolo lo lascia nello storico ma impedisce che venga proposto di nuovo. I 30 più recenti sono mostrati sotto il calendario; la data del capitolo non occupa una casella del piano X.</p>
-            @forelse ($recentContents as $content)
-                <article class="mt-4 rounded-2xl border border-line-strong bg-subtle p-4">
-                    <div class="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                            <p class="font-semibold">{{ $content->title }} <span class="font-normal text-muted">· {{ $content->series_title }}</span></p>
-                            <p class="mt-1 text-xs text-muted">{{ $content->source->name }} · {{ $content->released_at?->setTimezone($timezone)->format('d/m/Y') ?? 'data non disponibile' }} · {{ match ($content->eligibility_status) { 'eligible' => 'Idoneo', 'excluded' => 'Escluso', default => 'Da valutare' } }} · {{ $content->proposal ? 'Post: '.$content->proposal->status : 'Nessun post proposto' }}</p>
-                            <a href="{{ $content->public_url }}" target="_blank" rel="noopener noreferrer" class="mt-1 inline-block text-xs text-accent-ink">Apri il capitolo ↗</a>
-                        </div>
-                        <div class="flex flex-wrap gap-2">
-                            @if ($content->eligibility_status !== 'excluded')
-                                <form method="POST" action="{{ route('sites.editorial-plan.contents.eligibility', [$site, $content]) }}">@csrf @method('PATCH')<input type="hidden" name="status" value="excluded"><button class="ui-button ui-button-small">Escludi</button></form>
-                            @else
-                                <form method="POST" action="{{ route('sites.editorial-plan.contents.eligibility', [$site, $content]) }}">@csrf @method('PATCH')<input type="hidden" name="status" value="eligible"><button class="ui-button ui-tone-success ui-button-small">Ripristina</button></form>
-                            @endif
-                        </div>
-                    </div>
-                </article>
-            @empty
-                <p class="mt-4 text-sm text-muted">Nessun capitolo letto. Usa “Analizza ora” dopo aver verificato una fonte.</p>
-            @endforelse
-            <div class="mt-5">{{ $recentContents->links() }}</div>
-        </section>
+        <details id="chapters" class="group ui-panel mt-8" open>
+            <summary class="cursor-pointer list-none rounded-xl px-5 py-3 hover:bg-subtle [&::-webkit-details-marker]:hidden">
+                <h2 class="flex flex-wrap items-center gap-x-3 gap-y-1 text-lg font-semibold">
+                    <span>Capitoli letti dalle fonti</span>
+                    <span class="ui-badge" title="Capitoli importati">{{ $recentContents->total() }}</span>
+                    <span class="ml-auto text-sm font-medium text-accent-ink">
+                        <span class="hidden group-open:inline">Compatta</span>
+                        <span class="group-open:hidden">Mostra</span>
+                    </span>
+                </h2>
+            </summary>
+
+            <div class="border-t border-line px-5 pb-3">
+                <div class="divide-y divide-line">
+                    @forelse ($recentContents as $content)
+                        <article class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-2.5">
+                            <div class="w-full min-w-0 sm:w-auto sm:flex-1">
+                                <p class="text-sm font-semibold">{{ $content->title }} <span class="font-normal text-muted">· {{ $content->series_title }}</span></p>
+                                <p class="mt-1 text-xs text-muted">
+                                    {{ $content->source->name }} · {{ $content->released_at?->setTimezone($timezone)->format('d/m/Y') ?? 'data non disponibile' }} · {{ match ($content->eligibility_status) { 'eligible' => 'Idoneo', 'excluded' => 'Escluso', default => 'Da valutare' } }}
+                                    @if ($content->source->is_active)
+                                        · {{ $content->proposal ? 'Post: '.$content->proposal->status : 'Nessun post proposto' }}
+                                    @else
+                                        · Fonte disattivata
+                                    @endif
+                                </p>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                @if ($content->source->is_active)
+                                    <a href="{{ $content->public_url }}" target="_blank" rel="noopener noreferrer" class="px-1 text-xs text-accent-ink">Apri il capitolo ↗</a>
+                                @endif
+                                @if ($content->eligibility_status !== 'excluded')
+                                    <form method="POST" action="{{ route('sites.editorial-plan.contents.eligibility', [$site, $content]) }}">@csrf @method('PATCH')<input type="hidden" name="status" value="excluded"><button class="ui-button ui-button-small">Escludi</button></form>
+                                @else
+                                    <form method="POST" action="{{ route('sites.editorial-plan.contents.eligibility', [$site, $content]) }}">@csrf @method('PATCH')<input type="hidden" name="status" value="eligible"><button class="ui-button ui-tone-success ui-button-small">Ripristina</button></form>
+                                @endif
+                            </div>
+                        </article>
+                    @empty
+                        <p class="pt-3 text-sm text-muted">Nessun capitolo letto. Usa “Analizza ora” dopo aver verificato una fonte.</p>
+                    @endforelse
+                </div>
+                @if ($recentContents->hasPages())
+                    <div class="mt-3 border-t border-line pt-3">{{ $recentContents->links() }}</div>
+                @endif
+            </div>
+        </details>
 
         <section class="ui-panel mt-8 p-6 sm:p-8" aria-labelledby="proposals-heading">
             <div class="flex flex-wrap items-start justify-between gap-4">
@@ -163,13 +218,31 @@
             </div>
             @unless ($aiReady) <p class="mt-3 text-sm text-warning-ink">Per generare bozze, <a href="{{ route('settings.ai.index') }}" class="underline">verifica e attiva un servizio AI</a>.</p> @endunless
             @forelse ($proposals as $proposal)
+                @php($source = $proposal->content->source)
+                @php($canEditImages = $proposal->platform === 'x' && $source->is_active && in_array($proposal->status, ['draft', 'approved', 'deferred', 'rejected'], true))
                 <article id="proposal-{{ $proposal->id }}" class="mt-5 rounded-2xl border border-line-strong bg-subtle p-5">
                     <div class="flex flex-wrap items-center justify-between gap-3">
                         <h3 class="font-semibold">{{ $proposal->content->series_title }} — {{ $proposal->content->title }}</h3>
                         <span class="text-sm text-muted">X · {{ match ($proposal->status) { 'approved' => 'Approvata', 'rejected' => 'Scartata', 'deferred' => 'Rimandata dall’AI', 'published' => 'Pubblicata', 'delivery_uncertain' => 'Esito da verificare', default => 'Bozza' } }}</span>
                     </div>
                     <p class="mt-3 whitespace-pre-wrap break-words text-sm text-soft">{{ $proposal->post_text }}</p>
+                    @if ($proposal->image_attachments && $source->is_active)
+                        @include('sites.partials.editorial-image-preview', ['attachments' => $proposal->image_attachments, 'suggested' => false])
+                    @elseif ($proposal->image_attachments === null && $canEditImages && $source->verification_status === 'verified')
+                        <div data-image-preview="{{ route('sites.editorial-plan.proposals.images.preview', [$site, $proposal]) }}"></div>
+                    @endif
                     <p class="mt-3 text-sm text-muted">Data suggerita: {{ $proposal->proposed_for?->setTimezone($timezone)->format('d/m/Y H:i') ?? 'non impostata' }} ({{ $timezone }})</p>
+                    @if ($proposal->generated_at || $proposal->manual_override)
+                        <p class="mt-1 text-xs text-muted">
+                            @if ($proposal->generated_at)
+                                Ultima generazione AI <time datetime="{{ $proposal->generated_at->toIso8601String() }}">{{ $proposal->generated_at->setTimezone($timezone)->format('d/m/Y H:i') }}</time>
+                            @endif
+                            @if ($proposal->manual_override)
+                                @if ($proposal->generated_at) · @endif
+                                Modificata a mano
+                            @endif
+                        </p>
+                    @endif
                     <p class="mt-2 text-sm text-soft"><span class="font-semibold">Motivazione:</span> {{ $proposal->rationale }}</p>
                     @if ($proposal->x_post_id) <a href="https://x.com/i/web/status/{{ $proposal->x_post_id }}" target="_blank" rel="noopener noreferrer" class="mt-2 inline-block text-sm text-accent-ink">Apri il post su X ↗</a> @endif
                     @if ($proposal->delivery_error) <p class="mt-2 text-sm text-danger-ink">{{ $proposal->delivery_error }}</p> @endif
@@ -193,8 +266,11 @@
                     </details>
                     @endif
                     <div class="mt-4 flex flex-wrap gap-2">
+                        @if ($canEditImages)
+                            <a href="{{ route('sites.editorial-plan.proposals.images.edit', [$site, $proposal]) }}" class="ui-button">{{ $proposal->image_attachments ? 'Modifica immagini' : 'Scegli immagini' }}</a>
+                        @endif
                         @if (! in_array($proposal->status, ['approved', 'published', 'delivery_uncertain', 'delivering'], true) && $proposal->content->eligibility_status === 'eligible')
-                            <form method="POST" action="{{ route('sites.editorial-plan.proposals.review', [$site, $proposal]) }}">@csrf @method('PATCH')<input type="hidden" name="status" value="approved"><button class="ui-button ui-tone-success">Approva proposta</button></form>
+                            <form method="POST" action="{{ route('sites.editorial-plan.proposals.review', [$site, $proposal]) }}">@csrf @method('PATCH')<input type="hidden" name="status" value="approved"><button class="ui-button ui-tone-success">{{ $proposal->image_attachments ? 'Approva proposta con immagini' : 'Approva solo testo' }}</button></form>
                         @endif
                         @if (! in_array($proposal->status, ['rejected', 'published', 'delivery_uncertain', 'delivering'], true))
                             <form method="POST" action="{{ route('sites.editorial-plan.proposals.review', [$site, $proposal]) }}">@csrf @method('PATCH')<input type="hidden" name="status" value="rejected"><button class="ui-button">Scarta</button></form>

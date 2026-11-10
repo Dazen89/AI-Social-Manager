@@ -108,6 +108,59 @@ class EditorialWorkflowTest extends TestCase
         Http::assertSent(fn ($request) => $request->url() === 'https://api.openai.com/v1/responses');
     }
 
+    public function test_editorial_prompt_uses_observed_x_interaction_rates_and_copy_format(): void
+    {
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
+        $source = $this->source($site);
+        $candidate = $this->content($site, $source, '3');
+        $this->ai($admin);
+
+        $previousCopy = "Nuovo capitolo.\nQuale leggere?";
+        foreach ([
+            ['1', $previousCopy, now(), ['impression_count' => 200, 'reply_count' => 3, 'repost_count' => 5, 'like_count' => 0]],
+            ['2', 'Uscita disponibile.', now()->subHour(), ['reply_count' => 1]],
+        ] as [$id, $copy, $collectedAt, $metrics]) {
+            $content = $this->content($site, $source, $id);
+            $proposal = $site->editorialProposals()->create([
+                'editorial_content_id' => $content->id,
+                'status' => 'published',
+                'post_text' => $copy."\n\n".$content->public_url.'?campaign=editorial',
+                'rationale' => 'Uscita recente.',
+                'published_at' => now()->subDay(),
+            ]);
+            $proposal->metricSnapshots()->create(['metrics' => $metrics, 'collected_at' => $collectedAt]);
+        }
+
+        Http::preventStrayRequests();
+        Http::fake(['https://api.openai.com/v1/responses' => Http::response([
+            'output' => [['type' => 'message', 'content' => [['type' => 'output_text', 'text' => json_encode([
+                'cadence' => ['posts_per_week' => 7, 'confidence' => 'low', 'rationale' => 'Campione ridotto.'],
+                'proposals' => [['content_id' => $candidate->id, 'post_text' => 'Capitolo 3 disponibile.', 'rationale' => 'Campione ridotto.', 'day_offset' => 1, 'hour' => 18]],
+            ])]]]],
+        ])]);
+
+        $this->actingAs($admin)->post(route('sites.editorial-plan.proposals.generate', $site))->assertSessionHas('status');
+
+        Http::assertSentCount(1);
+        [$request] = Http::recorded()->sole();
+        $instructions = data_get($request->data(), 'input.0.content.0.text');
+        $payload = data_get($request->data(), 'input.1.content.0.text');
+        $xMetrics = json_decode($payload, true, flags: JSON_THROW_ON_ERROR)['signals']['x_post_metrics'];
+
+        $this->assertStringContainsString('ranking del feed Per te di X', $instructions);
+        $this->assertStringContainsString('confronta i tassi interactions_per_100_impressions', $instructions);
+        $this->assertStringNotContainsString('Quale leggere?', $payload);
+        $this->assertStringNotContainsString('campaign=editorial', $payload);
+        $this->assertSame('available', $xMetrics['status']);
+        $this->assertSame(2, $xMetrics['sample_size']);
+        $this->assertSame(['reply_count' => 1.5, 'repost_count' => 2.5, 'like_count' => 0], $xMetrics['posts'][0]['interactions_per_100_impressions']);
+        $this->assertSame(['characters' => mb_strlen($previousCopy), 'has_question' => true, 'has_line_break' => true], $xMetrics['posts'][0]['copy_format']);
+        $this->assertNull($xMetrics['posts'][1]['interactions_per_100_impressions']);
+        $this->assertFalse($xMetrics['posts'][1]['copy_format']['has_question']);
+        $this->assertSame('draft', $candidate->proposal()->sole()->status);
+    }
+
     public function test_italian_confidence_is_normalized_and_schema_requests_canonical_values(): void
     {
         $admin = User::factory()->administrator()->create();
@@ -312,6 +365,31 @@ class EditorialWorkflowTest extends TestCase
             ->assertOk()->assertSee('Capitolo 13')->assertSee('Capitolo 12');
     }
 
+    public function test_chapter_review_is_collapsible_and_paginates_in_the_selected_month(): void
+    {
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
+        $source = $this->source($site);
+
+        foreach (range(1, 7) as $id) {
+            $this->content($site, $source, (string) $id);
+        }
+
+        $this->actingAs($admin)->get(route('sites.editorial-plan.show', ['site' => $site, 'month' => '2026-10']))
+            ->assertOk()
+            ->assertSee('<details id="chapters"', false)
+            ->assertSee('Compatta')
+            ->assertSee('Capitolo 7')
+            ->assertSee('Capitolo 2')
+            ->assertDontSee('Capitolo 1')
+            ->assertSee('month=2026-10&amp;chapters=2#chapters', false);
+
+        $this->get(route('sites.editorial-plan.show', ['site' => $site, 'month' => '2026-10', 'chapters' => 2]))
+            ->assertOk()
+            ->assertSee('Capitolo 1')
+            ->assertDontSee('Capitolo 2');
+    }
+
     public function test_chapter_review_distinguishes_two_chapters_of_the_same_series(): void
     {
         $this->travelTo(CarbonImmutable::parse('2026-10-23 12:00:00', 'UTC'));
@@ -331,33 +409,50 @@ class EditorialWorkflowTest extends TestCase
     public function test_manual_control_reanalyses_known_chapters_even_with_no_new_releases(): void
     {
         config()->set('app.env', 'local');
+        $this->travelTo(CarbonImmutable::parse('2026-10-28 14:00:00', 'UTC'));
         $admin = User::factory()->administrator()->create();
         $site = Site::factory()->create();
         $source = $this->source($site);
         $content = $this->content($site, $source, '12');
         $this->ai($admin);
+        $response = fn (string $copy): array => [
+            'id' => 'resp_manual_test',
+            'output' => [['type' => 'message', 'content' => [['type' => 'output_text', 'text' => json_encode([
+                'cadence' => ['posts_per_week' => 7, 'confidence' => 'low', 'rationale' => 'Nessun dato di performance: mantenere il piano giornaliero e misurare.'],
+                'proposals' => [['content_id' => $content->id, 'post_text' => $copy, 'rationale' => 'Unico lavoro disponibile.', 'day_offset' => 1, 'hour' => 18]],
+            ])]]]],
+            'usage' => ['input_tokens' => 30, 'output_tokens' => 15, 'total_tokens' => 45],
+        ];
         Http::preventStrayRequests();
         Http::fake([
             'http://localhost:8080/api/reader/chapters/format/json?page=1&per_page=20&orderby=desc_created' => Http::response(['chapters' => [$this->chapter(12, 'http://localhost:8080/chapter/12')]]),
             'http://localhost:8080/api/reader/chapters/format/json?page=2&per_page=20&orderby=desc_created' => Http::response(['chapters' => []]),
-            'https://api.openai.com/v1/responses' => Http::response([
-                'id' => 'resp_manual_test',
-                'output' => [['type' => 'message', 'content' => [['type' => 'output_text', 'text' => json_encode([
-                    'cadence' => ['posts_per_week' => 7, 'confidence' => 'low', 'rationale' => 'Nessun dato di performance: mantenere il piano giornaliero e misurare.'],
-                    'proposals' => [['content_id' => $content->id, 'post_text' => 'Capitolo disponibile.', 'rationale' => 'Unico lavoro disponibile.', 'day_offset' => 1, 'hour' => 18]],
-                ])]]]],
-                'usage' => ['input_tokens' => 30, 'output_tokens' => 15, 'total_tokens' => 45],
-            ]),
+            'https://api.openai.com/v1/responses' => Http::sequence()
+                ->push($response('Capitolo disponibile.'))
+                ->push($response('Segnalibro pronto? Si torna a Serie di prova.')),
         ]);
 
         $this->actingAs($admin)->post(route('sites.editorial-plan.run', $site))->assertSessionHas('status');
-        $this->actingAs($admin)->post(route('sites.editorial-plan.run', $site))->assertSessionHas('status');
+        $proposal = $content->proposal()->sole();
+        $this->assertStringStartsWith('Capitolo disponibile.', $proposal->post_text);
+
+        $this->travel(5)->minutes();
+        $this->post(route('sites.editorial-plan.run', $site))->assertSessionHas('status');
+
+        $proposal->refresh();
+        $this->assertSame("Segnalibro pronto? Si torna a Serie di prova.\n\n".$content->public_url, $proposal->post_text);
+        $this->assertSame('28/10/2026 14:05', $proposal->generated_at->format('d/m/Y H:i'));
+        $this->get(route('sites.editorial-plan.show', $site))
+            ->assertOk()
+            ->assertSeeInOrder(['Segnalibro pronto?', 'Ultima generazione AI', '28/10/2026 14:05']);
 
         $this->assertDatabaseCount('editorial_contents', 1);
+        $this->assertDatabaseCount('editorial_proposals', 1);
         $this->assertDatabaseCount('editorial_cadence_recommendations', 2);
         $this->assertDatabaseCount('ai_usage_records', 2);
         $this->assertNotNull($site->editorialSchedule()->firstOrFail()->last_run_at);
         Http::assertSentCount(6);
+        Http::assertSent(fn ($request) => str_contains((string) data_get($request->data(), 'input.0.content.0.text'), 'Varia gli attacchi all\'interno dello stesso piano'));
     }
 
     public function test_manual_analysis_is_queued_without_holding_open_the_web_request(): void
@@ -367,7 +462,7 @@ class EditorialWorkflowTest extends TestCase
         Queue::fake();
 
         $this->actingAs($admin)->post(route('sites.editorial-plan.run', $site))
-            ->assertSessionHas('status', 'Analisi avviata in background. Il calendario si aggiornerà al completamento; puoi continuare a usare la dashboard.');
+            ->assertSessionHas('status', 'Richiesta di analisi ricevuta. Usa «Ricarica lo stato» per vedere l’esito.');
 
         Queue::assertPushed(RunEditorialAnalysis::class, fn (RunEditorialAnalysis $job): bool => $job->siteId === $site->id);
         $this->assertDatabaseCount('editorial_schedules', 0);

@@ -6,6 +6,7 @@ use App\Models\IntegrationSetting;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\XConnection;
+use App\Services\XService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\DB;
@@ -30,7 +31,7 @@ class XOAuthTest extends TestCase
         $this->assertSame('code', $query['response_type']);
         $this->assertSame('saved-x-client-id', $query['client_id']);
         $this->assertSame('https://monitor.example.com/integrations/x/callback', $query['redirect_uri']);
-        $this->assertSame('tweet.read tweet.write users.read offline.access', $query['scope']);
+        $this->assertSame('tweet.read tweet.write users.read offline.access media.write', $query['scope']);
         $this->assertSame('S256', $query['code_challenge_method']);
         $this->assertNotSame('', $query['code_challenge']);
         $this->assertNotSame('', $query['state']);
@@ -44,7 +45,7 @@ class XOAuthTest extends TestCase
                 'token_type' => 'bearer',
                 'expires_in' => 7200,
                 'access_token' => 'secret-access-token',
-                'scope' => 'tweet.read tweet.write users.read offline.access',
+                'scope' => 'tweet.read tweet.write users.read offline.access media.write',
                 'refresh_token' => 'secret-refresh-token',
             ]),
             'https://api.x.com/2/users/me*' => Http::response([
@@ -96,6 +97,30 @@ class XOAuthTest extends TestCase
 
         Http::assertSent(fn (Request $request): bool => str_starts_with($request->url(), 'https://api.x.com/2/users/me')
             && $request->hasHeader('Authorization', 'Bearer secret-access-token'));
+    }
+
+    public function test_post_metrics_use_the_repost_count_returned_by_x(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake(['https://api.x.com/2/tweets/123*' => Http::response([
+            'data' => ['public_metrics' => [
+                'impression_count' => 250,
+                'retweet_count' => 4,
+                'reply_count' => 0,
+            ]],
+        ])]);
+        $connection = new XConnection([
+            'access_token' => 'synthetic-token',
+            'token_expires_at' => now()->addHour(),
+        ]);
+
+        $this->assertSame([
+            'impression_count' => 250,
+            'reply_count' => 0,
+            'repost_count' => 4,
+        ], app(XService::class)->postPublicMetrics($connection, '123'));
+
+        Http::assertSentCount(1);
     }
 
     public function test_callback_rejects_an_invalid_state_without_calling_x(): void
@@ -187,7 +212,6 @@ class XOAuthTest extends TestCase
         config()->set('services.x.client_id');
         config()->set('services.x.client_secret');
         config()->set('services.x.redirect_uri', 'https://monitor.example.com/integrations/x/callback');
-        config()->set('services.x.scopes', ['tweet.read', 'tweet.write', 'users.read', 'offline.access']);
     }
 
     private function createSetting(User $admin): IntegrationSetting

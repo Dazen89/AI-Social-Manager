@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'site_id', 'editorial_content_id', 'ai_integration_id', 'platform', 'status',
     'post_text', 'rationale', 'proposed_for', 'source_snapshot', 'generated_at',
     'reviewed_by_user_id', 'reviewed_at',
-    'manual_override',
+    'manual_override', 'image_attachments',
     'x_post_id', 'published_at', 'delivery_attempted_at', 'delivery_error',
 ])]
 class EditorialProposal extends Model
@@ -24,6 +24,7 @@ class EditorialProposal extends Model
             'generated_at' => 'datetime',
             'reviewed_at' => 'datetime',
             'manual_override' => 'boolean',
+            'image_attachments' => 'encrypted:array',
             'published_at' => 'datetime',
             'delivery_attempted_at' => 'datetime',
         ];

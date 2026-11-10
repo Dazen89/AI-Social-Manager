@@ -105,7 +105,7 @@
                             <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-sm font-semibold text-accent-ink">5</span>
                             <div>
                                 <h3 class="font-semibold">Consenti lettura e scrittura</h3>
-                                <p class="mt-1 text-sm leading-6 text-muted">Seleziona i permessi <strong class="text-soft">Read and write</strong>. Il collegamento richiederà esclusivamente gli scope necessari a identificare l’account, creare post e rinnovare l’accesso:</p>
+                                <p class="mt-1 text-sm leading-6 text-muted">Seleziona i permessi <strong class="text-soft">Read and write</strong>. Il collegamento richiederà gli scope per identificare l’account, creare post, caricare immagini e rinnovare l’accesso.</p>
                                 <div class="mt-3 flex flex-wrap gap-2">
                                     @foreach ($scopes as $scope)
                                         <code class="rounded-lg bg-subtle px-2.5 py-1.5 text-xs text-soft">{{ $scope }}</code>
@@ -214,6 +214,10 @@
                         </div>
 
                         <a href="{{ route('x.connect') }}" class="mt-5 w-full ui-button">Cambia account X</a>
+                        @unless (in_array('media.write', $connection->scopes ?? [], true))
+                            <p class="mt-3 text-sm text-muted">Ricollega l’account per autorizzare il caricamento delle immagini su X.</p>
+                            <a href="{{ route('x.connect') }}" class="mt-2 w-full ui-button">Ricollega per le immagini</a>
+                        @endunless
                         <form method="POST" action="{{ route('x.destroy') }}" class="mt-3" data-confirm="Vuoi scollegare l’account X usato per pubblicare?" onsubmit="return confirm(this.dataset.confirm)">
                             @csrf
                             @method('DELETE')

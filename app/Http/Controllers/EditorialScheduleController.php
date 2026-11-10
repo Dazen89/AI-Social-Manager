@@ -26,7 +26,7 @@ class EditorialScheduleController extends Controller
 
         RunEditorialAnalysis::dispatch($site->id);
 
-        return back()->with('status', 'Analisi avviata in background. Il calendario si aggiornerà al completamento; puoi continuare a usare la dashboard.');
+        return back()->with('status', 'Richiesta di analisi ricevuta. Usa «Ricarica lo stato» per vedere l’esito.');
     }
 
     public function update(Request $request, Site $site): RedirectResponse

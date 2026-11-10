@@ -125,6 +125,40 @@ class EditorialScheduleTest extends TestCase
         $this->actingAs($admin)->get(route('sites.editorial-plan.show', $site))->assertSee('Piano sospeso dopo tre errori');
     }
 
+    public function test_overview_separates_the_last_refresh_from_the_attempt_and_the_next_check(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-28 14:00:00', 'UTC'));
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
+        $schedule = $site->editorialSchedule()->create([
+            'enabled' => true,
+            'interval_hours' => 24,
+            'start_time' => '09:00',
+            'timezone' => 'Europe/Rome',
+            'last_run_at' => now()->subDay(),
+            'last_attempt_at' => now()->subHour(),
+            'next_run_at' => now()->subMinutes(15),
+            'last_imported_count' => 0,
+            'last_proposal_count' => 3,
+        ]);
+
+        $this->actingAs($admin)->get(route('sites.editorial-plan.show', $site))
+            ->assertOk()
+            ->assertSee('Ricarica lo stato')
+            ->assertSeeInOrder([
+                'Ultimo aggiornamento riuscito', '27/10/2026 15:00', '0 nuove uscite, 3 proposte elaborate.',
+                'Ultimo tentativo avviato', '28/10/2026 14:00',
+                'Prossimo controllo automatico', '28/10/2026 14:45', 'In ritardo',
+            ]);
+
+        $schedule->update(['enabled' => false, 'next_run_at' => null]);
+
+        $this->get(route('sites.editorial-plan.show', $site))
+            ->assertOk()
+            ->assertSeeInOrder(['Ultimo aggiornamento riuscito', '27/10/2026 15:00', 'Automazione disattivata'])
+            ->assertDontSee('In ritardo');
+    }
+
     private function source(Site $site): void
     {
         $site->editorialSources()->create([

@@ -37,6 +37,11 @@ class SiteEditorialPlanController extends Controller
             $days[] = null;
         }
 
+        $visibleProposals = $site->editorialProposals()->with('content.source')
+            ->where(fn ($query) => $query
+                ->whereHas('content.source', fn ($source) => $source->where('is_active', true))
+                ->orWhereIn('status', ['published', 'delivery_uncertain', 'delivering', 'rejected']));
+
         return view('sites.editorial-overview', [
             'site' => $site,
             'month' => $month,
@@ -47,13 +52,14 @@ class SiteEditorialPlanController extends Controller
             'cadence' => $site->editorialCadenceRecommendations()->latest('generated_at')->first(),
             'timezone' => $timezone,
             'sourcesCount' => $site->editorialSources()->count(),
-            'recentContents' => $site->editorialContents()->with(['source', 'proposal'])->orderByDesc('released_at')->orderByDesc('id')->paginate(30, ['*'], 'chapters')->withQueryString(),
+            'recentContents' => $site->editorialContents()->with(['source', 'proposal'])->orderByDesc('released_at')->orderByDesc('id')
+                ->paginate(6, ['*'], 'chapters')->withQueryString()->fragment('chapters'),
             'candidateCount' => $site->editorialContents()->whereIn('eligibility_status', ['pending', 'eligible'])
                 ->whereHas('source', fn ($query) => $query->where('is_active', true)->where('verification_status', 'verified'))
                 ->whereDoesntHave('proposal')->count(),
             'aiReady' => AiIntegration::query()->where('active_marker', 'active')->where('status', 'verified')->exists(),
-            'proposals' => $site->editorialProposals()->with('content')->orderByDesc('created_at')->limit(50)->get(),
-            'calendarProposals' => $site->editorialProposals()->with('content')->whereIn('status', ['draft', 'approved', 'published', 'delivery_uncertain'])
+            'proposals' => (clone $visibleProposals)->orderByDesc('created_at')->limit(50)->get(),
+            'calendarProposals' => $visibleProposals->whereIn('status', ['draft', 'approved', 'published', 'delivery_uncertain'])
                 ->whereBetween('proposed_for', [
                     $month->startOfMonth()->setTimezone('UTC'),
                     $month->endOfMonth()->setTimezone('UTC'),

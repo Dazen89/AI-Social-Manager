@@ -4,6 +4,7 @@ use App\Http\Controllers\AiIntegrationSettingsController;
 use App\Http\Controllers\AnalyticsInsightController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\EditorialProposalImagesController;
 use App\Http\Controllers\EditorialScheduleController;
 use App\Http\Controllers\EditorialWorkflowController;
 use App\Http\Controllers\GoogleAnalyticsConnectionController;
@@ -57,6 +58,12 @@ Route::middleware('auth')->group(function (): void {
             ->name('sites.editorial-plan.proposals.update');
         Route::patch('/sites/{site}/editorial-plan/proposals/{proposal}/review', [EditorialWorkflowController::class, 'review'])
             ->name('sites.editorial-plan.proposals.review');
+        Route::get('/sites/{site}/editorial-plan/proposals/{proposal}/images/preview', [EditorialProposalImagesController::class, 'preview'])
+            ->middleware('throttle:60,1,editorial-image-preview')->name('sites.editorial-plan.proposals.images.preview');
+        Route::get('/sites/{site}/editorial-plan/proposals/{proposal}/images', [EditorialProposalImagesController::class, 'edit'])
+            ->middleware('throttle:30,1')->name('sites.editorial-plan.proposals.images.edit');
+        Route::patch('/sites/{site}/editorial-plan/proposals/{proposal}/images', [EditorialProposalImagesController::class, 'update'])
+            ->middleware('throttle:10,1')->name('sites.editorial-plan.proposals.images.update');
         Route::post('/sites/{site}/analytics/insights', [AnalyticsInsightController::class, 'store'])
             ->name('sites.analytics-insights.store');
 

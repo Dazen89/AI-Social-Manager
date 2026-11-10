@@ -3,7 +3,11 @@
 namespace App\Services;
 
 use App\Exceptions\EditorialSourceVerificationException;
+use App\Models\EditorialContent;
 use App\Models\EditorialSource;
+use GuzzleHttp\Exception\TransferException;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Psr\Http\Message\ResponseInterface;
 use Throwable;
@@ -11,6 +15,10 @@ use Throwable;
 class FoOlSlideSourceVerifier
 {
     private const MAX_RESPONSE_BYTES = 262144;
+
+    private const MAX_IMAGE_BYTES = 5_000_000;
+
+    private const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
     public function __construct(
         private readonly PublicHostResolver $resolver,
@@ -83,6 +91,74 @@ class FoOlSlideSourceVerifier
         return $chapters;
     }
 
+    /** @return array<int, array{id: int, url: string, thumbnail: string, number: int}> */
+    public function chapterImages(EditorialContent $content): array
+    {
+        $source = $content->source;
+        $id = filter_var($content->external_id, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+
+        if (! $id || $source->site_id !== $content->site_id || ! $source->is_active
+            || $source->verification_status !== 'verified' || ! $source->containsPublicUrl($content->public_url)) {
+            throw new EditorialSourceVerificationException('Per leggere le immagini serve un capitolo di una fonte attiva e verificata.');
+        }
+
+        [$host, $address, $port] = $this->safeTarget($source);
+        $result = $this->readJson($source->base_url.'/api/reader/chapter/format/json?id='.$id, $host, $address, $port);
+        $data = $result['json'];
+
+        if ($result['status'] !== 200 || (int) data_get($data, 'chapter.id') !== $id
+            || (int) data_get($data, 'chapter.hidden', 1) !== 0 || (int) data_get($data, 'comic.hidden', 1) !== 0
+            || (int) data_get($data, 'comic.adult', 1) !== 0 || ! is_array($data['pages'] ?? null)) {
+            throw new EditorialSourceVerificationException('La fonte non ha restituito pagine pubbliche idonee per questo capitolo.');
+        }
+
+        $images = [];
+
+        foreach (array_values($data['pages']) as $index => $page) {
+            if (! is_array($page)) {
+                continue;
+            }
+
+            $pageId = filter_var($page['id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+            $url = $page['url'] ?? null;
+            $thumb = $page['thumb_url'] ?? null;
+
+            if (! $pageId || (int) ($page['chapter_id'] ?? 0) !== $id || (int) ($page['hidden'] ?? 1) !== 0
+                || ! is_string($url) || ! $source->containsPublicUrl($url)
+                || ! in_array($page['mime'] ?? null, self::IMAGE_TYPES, true)
+                || (int) ($page['size'] ?? 0) > self::MAX_IMAGE_BYTES) {
+                continue;
+            }
+
+            $images[$pageId] = [
+                'id' => $pageId,
+                'url' => $url,
+                'thumbnail' => is_string($thumb) && $source->containsPublicUrl($thumb) ? $thumb : $url,
+                'number' => $index + 1,
+            ];
+        }
+
+        return $images;
+    }
+
+    public function readChapterImage(EditorialSource $source, string $url): string
+    {
+        if (! $source->is_active || $source->verification_status !== 'verified' || ! $source->containsPublicUrl($url)) {
+            throw new EditorialSourceVerificationException('L’immagine deve appartenere alla fonte attiva e verificata del capitolo.');
+        }
+
+        [$host, $address, $port] = $this->safeTarget($source);
+        $response = $this->read($url, $host, $address, $port, 'image/*', self::MAX_IMAGE_BYTES);
+        $body = $response->body();
+        $image = $response->ok() ? @getimagesizefromstring($body) : false;
+
+        if (! $image || ! in_array($image['mime'], self::IMAGE_TYPES, true)) {
+            throw new EditorialSourceVerificationException('La fonte non ha restituito un’immagine JPEG, PNG o WebP valida.');
+        }
+
+        return $body;
+    }
+
     /** @return array<int, array<string, mixed>>|null */
     private function chapterEntries(mixed $raw, int $limit): ?array
     {
@@ -149,52 +225,46 @@ class FoOlSlideSourceVerifier
     /** @return array{status: int, json: array<string, mixed>|null} */
     private function readJson(string $url, string $host, string $address, int $port): array
     {
-        $pinnedAddress = str_contains($address, ':') ? '['.$address.']' : $address;
-        $response = Http::acceptJson()
-            ->connectTimeout(3)
-            ->timeout(8)
-            ->withOptions([
-                'allow_redirects' => false,
-                'http_errors' => false,
-                'proxy' => '',
-                'curl' => [
-                    CURLOPT_RESOLVE => ["{$host}:{$port}:{$pinnedAddress}"],
-                ],
-                'on_headers' => static function (ResponseInterface $headers): void {
-                    $length = $headers->getHeaderLine('Content-Length');
-
-                    if (is_numeric($length) && (int) $length > self::MAX_RESPONSE_BYTES) {
-                        throw new EditorialSourceVerificationException('La risposta API è troppo grande per una verifica rapida.');
-                    }
-                },
-                'progress' => static function (int $total, int $downloaded): bool {
-                    if ($total > self::MAX_RESPONSE_BYTES || $downloaded > self::MAX_RESPONSE_BYTES) {
-                        throw new EditorialSourceVerificationException('La risposta API è troppo grande per una verifica rapida.');
-                    }
-
-                    return false;
-                },
-            ])
-            ->get($url);
-
-        $length = $response->header('Content-Length');
-
-        if (is_numeric($length) && (int) $length > self::MAX_RESPONSE_BYTES) {
-            throw new EditorialSourceVerificationException('La risposta API è troppo grande per una verifica rapida.');
-        }
-
-        $body = $response->body();
-
-        if (strlen($body) > self::MAX_RESPONSE_BYTES) {
-            throw new EditorialSourceVerificationException('La risposta API è troppo grande per una verifica rapida.');
-        }
-
-        $json = json_decode($body, true);
+        $response = $this->read($url, $host, $address, $port, 'application/json', self::MAX_RESPONSE_BYTES);
+        $json = $response->json();
 
         return [
             'status' => $response->status(),
             'json' => is_array($json) && ! array_is_list($json) ? $json : null,
         ];
+    }
+
+    private function read(string $url, string $host, string $address, int $port, string $accept, int $maxBytes): Response
+    {
+        $pinnedAddress = str_contains($address, ':') ? '['.$address.']' : $address;
+
+        try {
+            $response = Http::accept($accept)->connectTimeout(3)->timeout(8)
+                ->withOptions([
+                    'allow_redirects' => false,
+                    'http_errors' => false,
+                    'proxy' => '',
+                    'curl' => [CURLOPT_RESOLVE => ["{$host}:{$port}:{$pinnedAddress}"]],
+                    'on_headers' => static function (ResponseInterface $headers) use ($maxBytes): void {
+                        if ((int) $headers->getHeaderLine('Content-Length') > $maxBytes) {
+                            throw new EditorialSourceVerificationException('La risposta della fonte supera la dimensione consentita.');
+                        }
+                    },
+                    'progress' => static function (int $total, int $downloaded) use ($maxBytes): void {
+                        if (max($total, $downloaded) > $maxBytes) {
+                            throw new EditorialSourceVerificationException('La risposta della fonte supera la dimensione consentita.');
+                        }
+                    },
+                ])->get($url);
+        } catch (ConnectionException|TransferException) {
+            throw new EditorialSourceVerificationException('La fonte non è raggiungibile. Riprova più tardi.');
+        }
+
+        if ((int) $response->header('Content-Length') > $maxBytes || strlen($response->body()) > $maxBytes) {
+            throw new EditorialSourceVerificationException('La risposta della fonte supera la dimensione consentita.');
+        }
+
+        return $response;
     }
 
     private function verified(EditorialSource $source, string $message): bool

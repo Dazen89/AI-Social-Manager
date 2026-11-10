@@ -54,7 +54,7 @@ return [
         'client_secret' => env('X_CLIENT_SECRET'),
         'redirect_uri' => env('X_REDIRECT_URI'),
         'auto_publish_allowed' => env('X_AUTO_PUBLISH_ALLOWED', false),
-        'scopes' => ['tweet.read', 'tweet.write', 'users.read', 'offline.access'],
+        'scopes' => ['tweet.read', 'tweet.write', 'users.read', 'offline.access', 'media.write'],
     ],
 
 ];
