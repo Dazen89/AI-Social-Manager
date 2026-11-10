@@ -18,6 +18,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'token_expires_at',
     'scopes',
     'status',
+    'manual_publishing_enabled',
+    'automatic_publishing_enabled',
     'last_verified_at',
     'last_error',
 ])]
@@ -31,6 +33,8 @@ class XConnection extends Model
             'refresh_token' => 'encrypted',
             'token_expires_at' => 'datetime',
             'scopes' => 'array',
+            'manual_publishing_enabled' => 'boolean',
+            'automatic_publishing_enabled' => 'boolean',
             'last_verified_at' => 'datetime',
         ];
     }
@@ -38,5 +42,15 @@ class XConnection extends Model
     public function authorizedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'authorized_by_user_id');
+    }
+
+    public function hasWriteAccess(): bool
+    {
+        return $this->status === 'active' && in_array('tweet.write', $this->scopes ?? [], true);
+    }
+
+    public function canPublish(bool $automatic): bool
+    {
+        return ($automatic ? $this->automatic_publishing_enabled : $this->manual_publishing_enabled) && $this->hasWriteAccess();
     }
 }

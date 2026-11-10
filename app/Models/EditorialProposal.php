@@ -16,6 +16,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 ])]
 class EditorialProposal extends Model
 {
+    public const EDITABLE_STATUSES = ['draft', 'approved', 'deferred', 'rejected'];
+
     protected function casts(): array
     {
         return [

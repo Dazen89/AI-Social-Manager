@@ -92,9 +92,12 @@
                 </div>
                 <div class="sm:col-span-4 rounded-xl border border-warning-ink/22 bg-warning-soft p-4 text-sm text-soft">
                     <p class="font-semibold text-warning-ink">Pubblicazione automatica su X</p>
-                    <p class="mt-1">L’AI approva i post delle fonti autorizzate e Monitor li invia all’ora prevista. Account: {{ $xConnection ? '@'.$xConnection->username : 'non collegato' }}. Le fonti si autorizzano nella pagina Fonti. La pubblicazione è bloccata fuori dalla produzione e finché l’operatore non abilita X_AUTO_PUBLISH_ALLOWED.</p>
+                    <p class="mt-1">In produzione l’AI approva le proposte delle fonti autorizzate e Monitor le invia all’ora prevista. Account {{ $xConnection ? '@'.$xConnection->username : 'da collegare' }}. Gestisci l’account e l’abilitazione nella pagina <a class="underline" href="{{ route('settings.x.edit') }}">Social</a> e autorizza le fonti nella pagina <a class="underline" href="{{ route('sites.editorial-plan.sources.index', $site) }}">Fonti</a>.</p>
+                    @unless ($xConnection?->canPublish(automatic: true))
+                        <p class="mt-2 text-warning-ink">Invio automatico sospeso. Abilita la pubblicazione automatica dell’account X in Social.</p>
+                    @endunless
                     <input type="hidden" name="x_autopublish_enabled" value="0">
-                    <label class="mt-3 flex items-center gap-2"><input type="checkbox" name="x_autopublish_enabled" value="1" @checked((bool) old('x_autopublish_enabled', $schedule?->x_autopublish_enabled ?? false)) class="rounded border-line-strong">Attiva approvazione AI e pubblicazione automatica</label>
+                    <label class="mt-3 flex items-center gap-2"><input type="checkbox" name="x_autopublish_enabled" value="1" @checked((bool) old('x_autopublish_enabled', $schedule?->x_autopublish_enabled ?? false)) @disabled(! $schedule?->x_autopublish_enabled && (! $xConnection?->canPublish(automatic: true) || ! app()->environment('production'))) class="rounded border-line-strong">Attiva approvazione AI e pubblicazione automatica</label>
                 </div>
             </form>
         </section>
@@ -114,7 +117,7 @@
             <div class="flex flex-wrap items-center justify-between gap-4">
                 <div>
                     <h2 id="calendar-heading" class="text-xl font-semibold">Calendario</h2>
-                    <p class="mt-1 text-sm text-muted">Qui compaiono solo i post X, nella data e nell’ora proposte ({{ $timezone }}), con motivazione. “Bozza” non viene inviata; “Approvata” sarà inviata soltanto con la pubblicazione automatica attiva; “Pubblicata” è già su X.</p>
+                    <p class="mt-1 text-sm text-muted">Il calendario mostra l’orario proposto per le bozze e quello effettivo per i post pubblicati ({{ $timezone }}). Puoi inviare una proposta con «Pubblica ora» o farla pubblicare all’ora prevista con il piano automatico attivo.</p>
                 </div>
                 <div class="ui-actions">
                     <a href="{{ route('sites.editorial-plan.show', ['site' => $site, 'month' => $month->subMonth()->format('Y-m')]) }}" aria-label="Mese precedente" class="ui-button ui-button-small">←</a>
@@ -143,7 +146,7 @@
                                             <time datetime="{{ $date }}" class="inline-flex size-8 items-center justify-center rounded-full text-sm {{ $date === $today ? 'bg-accent font-bold text-white' : 'text-soft' }}">{{ $day }}</time>
                                             @foreach ($calendarProposals->get($date, collect()) as $proposal)
                                                 <a href="#proposal-{{ $proposal->id }}" class="mt-1 block rounded-lg bg-accent-soft px-2 py-1 text-xs text-accent-ink no-underline hover:bg-accent-soft">
-                                                    <span class="font-semibold">{{ $proposal->proposed_for->setTimezone($timezone)->format('H:i') }} · {{ $proposal->content->series_title }}</span>
+                                                    <span class="font-semibold">{{ ($proposal->published_at ?? $proposal->proposed_for)->setTimezone($timezone)->format('H:i') }} · {{ $proposal->content->series_title }}</span>
                                                     <span class="block">{{ match ($proposal->status) { 'approved' => 'Approvata', 'published' => 'Pubblicata su X', 'delivery_uncertain' => 'Esito X da verificare', default => 'Bozza' } }}</span>
                                                     <span class="mt-1 block text-soft">{{ \Illuminate\Support\Str::limit($proposal->rationale, 100) }}</span>
                                                 </a>
@@ -219,11 +222,11 @@
             @unless ($aiReady) <p class="mt-3 text-sm text-warning-ink">Per generare bozze, <a href="{{ route('settings.ai.index') }}" class="underline">verifica e attiva un servizio AI</a>.</p> @endunless
             @forelse ($proposals as $proposal)
                 @php($source = $proposal->content->source)
-                @php($canEditImages = $proposal->platform === 'x' && $source->is_active && in_array($proposal->status, ['draft', 'approved', 'deferred', 'rejected'], true))
+                @php($canEditImages = $proposal->platform === 'x' && $source->is_active && in_array($proposal->status, \App\Models\EditorialProposal::EDITABLE_STATUSES, true))
                 <article id="proposal-{{ $proposal->id }}" class="mt-5 rounded-2xl border border-line-strong bg-subtle p-5">
                     <div class="flex flex-wrap items-center justify-between gap-3">
                         <h3 class="font-semibold">{{ $proposal->content->series_title }} — {{ $proposal->content->title }}</h3>
-                        <span class="text-sm text-muted">X · {{ match ($proposal->status) { 'approved' => 'Approvata', 'rejected' => 'Scartata', 'deferred' => 'Rimandata dall’AI', 'published' => 'Pubblicata', 'delivery_uncertain' => 'Esito da verificare', default => 'Bozza' } }}</span>
+                        <span class="text-sm text-muted">X · {{ match ($proposal->status) { 'approved' => 'Approvata', 'rejected' => 'Scartata', 'deferred' => 'Rimandata dall’AI', 'published' => 'Pubblicata', 'delivering' => 'Invio in corso', 'delivery_uncertain' => 'Esito da verificare', default => 'Bozza' } }}</span>
                     </div>
                     <p class="mt-3 whitespace-pre-wrap break-words text-sm text-soft">{{ $proposal->post_text }}</p>
                     @if ($proposal->image_attachments && $source->is_active)
@@ -231,7 +234,7 @@
                     @elseif ($proposal->image_attachments === null && $canEditImages && $source->verification_status === 'verified')
                         <div data-image-preview="{{ route('sites.editorial-plan.proposals.images.preview', [$site, $proposal]) }}"></div>
                     @endif
-                    <p class="mt-3 text-sm text-muted">Data suggerita: {{ $proposal->proposed_for?->setTimezone($timezone)->format('d/m/Y H:i') ?? 'non impostata' }} ({{ $timezone }})</p>
+                    <p class="mt-3 text-sm text-muted">{{ $proposal->published_at ? 'Pubblicata il' : 'Data suggerita:' }} {{ ($proposal->published_at ?? $proposal->proposed_for)?->setTimezone($timezone)->format('d/m/Y H:i') ?? 'non impostata' }} ({{ $timezone }})</p>
                     @if ($proposal->generated_at || $proposal->manual_override)
                         <p class="mt-1 text-xs text-muted">
                             @if ($proposal->generated_at)
@@ -267,6 +270,7 @@
                     @endif
                     <div class="mt-4 flex flex-wrap gap-2">
                         @if ($canEditImages)
+                            <a href="{{ route('sites.editorial-plan.proposals.publish.confirm', [$site, $proposal]) }}" class="ui-button ui-button-primary">Pubblica ora</a>
                             <a href="{{ route('sites.editorial-plan.proposals.images.edit', [$site, $proposal]) }}" class="ui-button">{{ $proposal->image_attachments ? 'Modifica immagini' : 'Scegli immagini' }}</a>
                         @endif
                         @if (! in_array($proposal->status, ['approved', 'published', 'delivery_uncertain', 'delivering'], true) && $proposal->content->eligibility_status === 'eligible')

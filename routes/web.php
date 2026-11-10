@@ -5,6 +5,7 @@ use App\Http\Controllers\AnalyticsInsightController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EditorialProposalImagesController;
+use App\Http\Controllers\EditorialProposalPublishController;
 use App\Http\Controllers\EditorialScheduleController;
 use App\Http\Controllers\EditorialWorkflowController;
 use App\Http\Controllers\GoogleAnalyticsConnectionController;
@@ -64,6 +65,10 @@ Route::middleware('auth')->group(function (): void {
             ->middleware('throttle:30,1')->name('sites.editorial-plan.proposals.images.edit');
         Route::patch('/sites/{site}/editorial-plan/proposals/{proposal}/images', [EditorialProposalImagesController::class, 'update'])
             ->middleware('throttle:10,1')->name('sites.editorial-plan.proposals.images.update');
+        Route::get('/sites/{site}/editorial-plan/proposals/{proposal}/publish', [EditorialProposalPublishController::class, 'confirm'])
+            ->middleware('throttle:20,1,editorial-publish-preview')->name('sites.editorial-plan.proposals.publish.confirm');
+        Route::post('/sites/{site}/editorial-plan/proposals/{proposal}/publish', [EditorialProposalPublishController::class, 'store'])
+            ->middleware('throttle:5,1,editorial-publish')->name('sites.editorial-plan.proposals.publish.store');
         Route::post('/sites/{site}/analytics/insights', [AnalyticsInsightController::class, 'store'])
             ->name('sites.analytics-insights.store');
 
@@ -94,6 +99,8 @@ Route::middleware('auth')->group(function (): void {
             ->name('x.connect');
         Route::get('/integrations/x/callback', [XConnectionController::class, 'callback'])
             ->name('x.callback');
+        Route::patch('/integrations/x/publishing', [XConnectionController::class, 'updatePublishing'])
+            ->name('x.publishing.update');
         Route::delete('/integrations/x', [XConnectionController::class, 'destroy'])
             ->name('x.destroy');
 

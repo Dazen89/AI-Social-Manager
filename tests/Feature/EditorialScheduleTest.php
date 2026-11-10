@@ -6,6 +6,7 @@ use App\Models\AiIntegration;
 use App\Models\EditorialContent;
 use App\Models\Site;
 use App\Models\User;
+use App\Models\XConnection;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -41,6 +42,43 @@ class EditorialScheduleTest extends TestCase
         ])->assertSessionHas('status');
         $this->assertFalse($site->editorialSchedule->fresh()->enabled);
         $this->assertNull($site->editorialSchedule->fresh()->next_run_at);
+    }
+
+    public function test_site_auto_publish_requires_account_activation_and_source_authorization(): void
+    {
+        $site = Site::factory()->create();
+        $admin = User::factory()->administrator()->create();
+        $this->source($site);
+        $this->ai($admin);
+        $connection = XConnection::query()->create([
+            'x_user_id' => '987654321', 'username' => 'publisher', 'display_name' => 'Publisher',
+            'access_token' => 'synthetic-token', 'scopes' => ['tweet.write'], 'status' => 'active', 'manual_publishing_enabled' => true,
+        ]);
+        $values = ['enabled' => '1', 'x_autopublish_enabled' => '1', 'interval_hours' => 24, 'start_time' => '09:00', 'timezone' => 'UTC'];
+        $route = route('sites.editorial-plan.schedule.update', $site);
+        $automatic = ['account' => $connection->x_user_id, 'mode' => 'automatic'];
+        Http::preventStrayRequests();
+        $this->actingAs($admin)->withHeader('Sec-Fetch-Site', 'same-origin');
+
+        $this->app->instance('env', 'production');
+        try {
+            $this->put($route, $values)->assertSessionHasErrors('x_autopublish_enabled');
+            $this->patch(route('x.publishing.update'), $automatic + ['enabled' => '1'])->assertSessionHas('status');
+            $this->put($route, $values)->assertSessionHasErrors('x_autopublish_enabled');
+
+            $site->editorialSources()->update(['promotion_authorized_at' => now()]);
+            $this->put($route, $values)->assertSessionHas('status');
+            $this->assertTrue($site->editorialSchedule()->sole()->x_autopublish_enabled);
+
+            $this->patch(route('x.publishing.update'), $automatic + ['enabled' => '0'])->assertSessionHas('status');
+            $this->put($route, [...$values, 'start_time' => '10:00'])->assertSessionHas('status');
+            $this->assertTrue($site->editorialSchedule()->sole()->x_autopublish_enabled);
+            $this->assertSame('10:00', $site->editorialSchedule()->sole()->start_time);
+        } finally {
+            $this->app->instance('env', 'testing');
+        }
+
+        Http::assertNothingSent();
     }
 
     public function test_due_schedule_imports_and_proposes_without_manual_actions_or_x_writes(): void

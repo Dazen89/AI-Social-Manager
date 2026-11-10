@@ -8,6 +8,7 @@ use App\Models\EditorialContent;
 use App\Models\EditorialSource;
 use App\Models\Site;
 use App\Models\User;
+use App\Models\XConnection;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -493,8 +494,15 @@ class EditorialWorkflowTest extends TestCase
 
         $this->actingAs($admin)->post(route('sites.editorial-plan.proposals.generate', $site))->assertSessionHas('status');
 
+        $this->assertSame('draft', $content->proposal()->sole()->status);
+        XConnection::query()->create([
+            'authorized_by_user_id' => $admin->id, 'x_user_id' => '123', 'username' => 'publisher',
+            'display_name' => 'Publisher', 'access_token' => 'synthetic-token',
+            'scopes' => ['tweet.write'], 'status' => 'active', 'automatic_publishing_enabled' => true,
+        ]);
+        $this->post(route('sites.editorial-plan.proposals.generate', $site))->assertSessionHas('status');
         $this->assertSame('approved', $content->proposal()->sole()->status);
-        Http::assertSentCount(1);
+        Http::assertSentCount(2);
     }
 
     private function source(Site $site): EditorialSource

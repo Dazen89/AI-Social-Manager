@@ -21,6 +21,9 @@ class SiteEditorialPlanController extends Controller
     {
         $schedule = $site->editorialSchedule;
         $timezone = $schedule?->timezone ?? (string) config('app.timezone');
+        $today = CarbonImmutable::today($timezone);
+        $todayUtc = $today->setTimezone('UTC');
+        $proposalDate = 'COALESCE(published_at, proposed_for)';
         $requestedMonth = $request->query('month');
         $month = is_string($requestedMonth) && preg_match('/^\d{4}-(0[1-9]|1[0-2])$/D', $requestedMonth)
             ? CarbonImmutable::createFromFormat('!Y-m-d', $requestedMonth.'-01', $timezone)
@@ -41,12 +44,13 @@ class SiteEditorialPlanController extends Controller
             ->where(fn ($query) => $query
                 ->whereHas('content.source', fn ($source) => $source->where('is_active', true))
                 ->orWhereIn('status', ['published', 'delivery_uncertain', 'delivering', 'rejected']));
+        $monthRange = [$month->startOfMonth()->setTimezone('UTC'), $month->endOfMonth()->setTimezone('UTC')];
 
         return view('sites.editorial-overview', [
             'site' => $site,
             'month' => $month,
             'weeks' => array_chunk($days, 7),
-            'today' => CarbonImmutable::today($timezone)->format('Y-m-d'),
+            'today' => $today->format('Y-m-d'),
             'schedule' => $schedule,
             'xConnection' => XConnection::query()->where('status', 'active')->first(),
             'cadence' => $site->editorialCadenceRecommendations()->latest('generated_at')->first(),
@@ -58,13 +62,15 @@ class SiteEditorialPlanController extends Controller
                 ->whereHas('source', fn ($query) => $query->where('is_active', true)->where('verification_status', 'verified'))
                 ->whereDoesntHave('proposal')->count(),
             'aiReady' => AiIntegration::query()->where('active_marker', 'active')->where('status', 'verified')->exists(),
-            'proposals' => (clone $visibleProposals)->orderByDesc('created_at')->limit(50)->get(),
+            'proposals' => (clone $visibleProposals)
+                ->orderByRaw("CASE WHEN {$proposalDate} >= ? THEN 0 WHEN {$proposalDate} IS NULL THEN 2 ELSE 1 END", [$todayUtc])
+                ->orderByRaw("CASE WHEN {$proposalDate} >= ? THEN {$proposalDate} END ASC", [$todayUtc])
+                ->orderByRaw("{$proposalDate} DESC")
+                ->orderByDesc('id')->limit(50)->get(),
             'calendarProposals' => $visibleProposals->whereIn('status', ['draft', 'approved', 'published', 'delivery_uncertain'])
-                ->whereBetween('proposed_for', [
-                    $month->startOfMonth()->setTimezone('UTC'),
-                    $month->endOfMonth()->setTimezone('UTC'),
-                ])
-                ->get()->groupBy(fn ($proposal) => $proposal->proposed_for->setTimezone($timezone)->format('Y-m-d')),
+                ->where(fn ($query) => $query->whereBetween('published_at', $monthRange)
+                    ->orWhere(fn ($planned) => $planned->whereNull('published_at')->whereBetween('proposed_for', $monthRange)))
+                ->get()->groupBy(fn ($proposal) => ($proposal->published_at ?? $proposal->proposed_for)->setTimezone($timezone)->format('Y-m-d')),
         ]);
     }
 
@@ -132,8 +138,9 @@ class SiteEditorialPlanController extends Controller
         }
 
         if (! $values['authorized']) {
-            $source->contents()->whereHas('proposal', fn ($query) => $query->where('status', 'approved'))
-                ->get()->each(fn ($content) => $content->proposal->update(['status' => 'draft']));
+            $site->editorialProposals()->where('status', 'approved')
+                ->whereHas('content', fn ($query) => $query->where('editorial_source_id', $source->id))
+                ->update(['status' => 'draft']);
         }
 
         return back()->with('status', $values['authorized']

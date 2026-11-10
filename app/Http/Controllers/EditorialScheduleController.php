@@ -9,6 +9,7 @@ use App\Models\XConnection;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -52,25 +53,34 @@ class EditorialScheduleController extends Controller
             throw ValidationException::withMessages(['enabled' => 'Verifica e attiva un servizio AI prima di avviare il piano automatico.']);
         }
 
-        if ($values['x_autopublish_enabled'] && (! $values['enabled'] || ! app()->environment('production')
-            || ! config('services.x.auto_publish_allowed')
-            || ! XConnection::query()->where('status', 'active')->exists()
-            || ! $site->editorialSources()->whereNotNull('promotion_authorized_at')->where('is_active', true)
-                ->where('verification_status', 'verified')->exists())) {
-            throw ValidationException::withMessages(['x_autopublish_enabled' => 'Per pubblicare automaticamente servono: ambiente di produzione, abilitazione operativa, piano attivo, account X collegato e fonte verificata autorizzata alla promozione.']);
-        }
+        $schedule = DB::transaction(function () use ($site, $values) {
+            $connection = $values['x_autopublish_enabled'] ? XConnection::query()->lockForUpdate()->first() : null;
+            $schedule = $site->editorialSchedule()->firstOrNew();
 
-        $schedule = $site->editorialSchedule()->firstOrNew();
-        $wasEnabled = (bool) $schedule->enabled;
-        $schedule->fill($values);
-        if ($schedule->enabled && ! $wasEnabled) {
-            $schedule->consecutive_failures = 0;
-            $schedule->last_error = null;
-        }
-        $schedule->next_run_at = ! $schedule->enabled
-            ? null
-            : ($wasEnabled ? $schedule->nextAfter(CarbonImmutable::now('UTC')) : now());
-        $schedule->save();
+            if ($values['x_autopublish_enabled'] && ! $values['enabled']) {
+                throw ValidationException::withMessages(['x_autopublish_enabled' => 'Attiva il piano automatico del sito per pubblicare all’ora prevista.']);
+            }
+
+            if ($values['x_autopublish_enabled'] && ! $schedule->x_autopublish_enabled
+                && (! app()->environment('production') || ! $connection?->canPublish(automatic: true)
+                    || ! $site->editorialSources()->whereNotNull('promotion_authorized_at')->where('is_active', true)
+                        ->where('verification_status', 'verified')->exists())) {
+                throw ValidationException::withMessages(['x_autopublish_enabled' => 'Per attivare l’invio automatico in produzione, abilita la pubblicazione automatica nella pagina Social e autorizza una fonte attiva e verificata.']);
+            }
+
+            $wasEnabled = (bool) $schedule->enabled;
+            $schedule->fill($values);
+            if ($schedule->enabled && ! $wasEnabled) {
+                $schedule->consecutive_failures = 0;
+                $schedule->last_error = null;
+            }
+            $schedule->next_run_at = ! $schedule->enabled
+                ? null
+                : ($wasEnabled ? $schedule->nextAfter(CarbonImmutable::now('UTC')) : now());
+            $schedule->save();
+
+            return $schedule;
+        });
 
         return redirect()->route('sites.editorial-plan.show', $site)->with('status', $schedule->enabled
             ? 'Piano automatico attivato. Il primo controllo partirà al prossimo passaggio dello Scheduler.'

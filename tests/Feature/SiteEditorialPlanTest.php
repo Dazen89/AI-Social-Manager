@@ -135,6 +135,41 @@ class SiteEditorialPlanTest extends TestCase
             ->assertSee('ottobre 2026');
     }
 
+    public function test_proposals_list_shows_today_and_upcoming_posts_before_history(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-22 12:00:00', 'UTC'));
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create(['host' => 'example.test', 'base_url' => 'https://example.test']);
+        $source = $site->editorialSources()->create([
+            'provider' => 'foolslide', 'name' => 'Archivio', 'base_url' => 'https://example.test',
+            'is_active' => true, 'verification_status' => 'verified',
+        ]);
+        $dates = [
+            'older' => ['proposed_for' => now()->subDays(2)],
+            'today' => ['proposed_for' => now()->subHour()],
+            'tomorrow' => ['proposed_for' => now()->addDay()],
+            'published' => ['proposed_for' => now()->addDays(3), 'published_at' => now()->subDay(), 'status' => 'published'],
+            'later' => ['proposed_for' => now()->addDays(2)],
+            'undated' => ['proposed_for' => null],
+        ];
+        $cards = [];
+
+        foreach ($dates as $name => $values) {
+            $content = $source->contents()->create([
+                'site_id' => $site->id, 'external_id' => $name, 'series_title' => 'Serie',
+                'title' => $name, 'public_url' => 'https://example.test/chapter/'.$name, 'last_seen_at' => now(),
+            ]);
+            $proposal = $site->editorialProposals()->create($values + [
+                'editorial_content_id' => $content->id, 'platform' => 'x', 'status' => 'draft',
+                'post_text' => 'Una proposta di lettura. '.$content->public_url, 'rationale' => 'Esempio.',
+            ]);
+            $cards[$name] = 'id="proposal-'.$proposal->id.'"';
+        }
+
+        $this->actingAs($admin)->get(route('sites.editorial-plan.show', $site))->assertOk()
+            ->assertSeeInOrder([$cards['today'], $cards['tomorrow'], $cards['later'], $cards['published'], $cards['older'], $cards['undated']], false);
+    }
+
     public function test_source_must_belong_to_the_site_and_not_be_duplicated(): void
     {
         $admin = User::factory()->administrator()->create();

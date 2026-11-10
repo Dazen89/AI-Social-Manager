@@ -11,6 +11,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class XOAuthTest extends TestCase
@@ -37,7 +38,8 @@ class XOAuthTest extends TestCase
         $this->assertNotSame('', $query['state']);
     }
 
-    public function test_callback_verifies_and_stores_the_selected_account_with_encrypted_tokens(): void
+    #[DataProvider('previousXAccounts')]
+    public function test_callback_verifies_the_account_and_keeps_publishing_enabled_only_for_the_same_identity(?string $previousAccount, bool $expectedEnabled): void
     {
         $this->configureX();
         Http::fake([
@@ -60,6 +62,17 @@ class XOAuthTest extends TestCase
 
         $admin = User::factory()->administrator()->create();
         $setting = $this->createSetting($admin);
+        if ($previousAccount !== null) {
+            XConnection::query()->create([
+                'x_user_id' => $previousAccount, 'username' => 'previous', 'display_name' => 'Previous account',
+                'access_token' => 'previous-token', 'status' => 'active',
+                'manual_publishing_enabled' => true, 'automatic_publishing_enabled' => true,
+            ]);
+            $schedule = Site::factory()->create()->editorialSchedule()->create([
+                'enabled' => true, 'x_autopublish_enabled' => true, 'interval_hours' => 24,
+                'start_time' => '09:00', 'timezone' => 'UTC',
+            ]);
+        }
         $authorization = $this->actingAs($admin)->get(route('x.connect'));
         parse_str((string) parse_url($authorization->headers->get('Location'), PHP_URL_QUERY), $query);
 
@@ -73,6 +86,11 @@ class XOAuthTest extends TestCase
         $connection = XConnection::query()->sole();
 
         $this->assertSame('987654321', $connection->x_user_id);
+        $this->assertSame($expectedEnabled, $connection->manual_publishing_enabled);
+        $this->assertSame($expectedEnabled, $connection->automatic_publishing_enabled);
+        if (isset($schedule)) {
+            $this->assertSame($expectedEnabled, $schedule->fresh()->x_autopublish_enabled);
+        }
         $this->assertSame('publisher', $connection->username);
         $this->assertSame('Publishing Account', $connection->display_name);
         $this->assertSame('secret-access-token', $connection->access_token);
@@ -97,6 +115,35 @@ class XOAuthTest extends TestCase
 
         Http::assertSent(fn (Request $request): bool => str_starts_with($request->url(), 'https://api.x.com/2/users/me')
             && $request->hasHeader('Authorization', 'Bearer secret-access-token'));
+    }
+
+    public static function previousXAccounts(): array
+    {
+        return ['first connection' => [null, false], 'same account' => ['987654321', true], 'different account' => ['123456789', false]];
+    }
+
+    public function test_only_administrators_can_enable_publication_for_the_current_account_with_write_access(): void
+    {
+        $connection = XConnection::query()->create([
+            'x_user_id' => '987654321', 'username' => 'publisher', 'display_name' => 'Publisher',
+            'access_token' => 'synthetic-token', 'scopes' => ['tweet.read'], 'status' => 'active',
+        ]);
+        $route = route('x.publishing.update');
+        $activation = ['account' => $connection->x_user_id, 'mode' => 'manual', 'enabled' => '1'];
+        Http::preventStrayRequests();
+
+        $this->actingAs(User::factory()->create(['is_admin' => false]))->patch($route, $activation)->assertForbidden();
+        $this->actingAs(User::factory()->administrator()->create())->patch($route, $activation)->assertSessionHas('integration_error');
+        $connection->update(['scopes' => ['tweet.write']]);
+        $this->patch($route, [...$activation, 'account' => '123456789'])->assertSessionHas('integration_error');
+        $this->assertFalse($connection->fresh()->manual_publishing_enabled);
+
+        $this->get(route('settings.x.edit'))->assertOk()->assertSee('Abilita pubblicazione manuale')->assertSee('Abilita pubblicazione automatica');
+        $this->patch($route, $activation)->assertRedirect(route('settings.x.edit'))->assertSessionHas('status');
+        $this->assertTrue($connection->fresh()->manual_publishing_enabled);
+        $this->assertFalse($connection->fresh()->automatic_publishing_enabled);
+        $this->get(route('settings.x.edit'))->assertOk()->assertSee('Sospendi pubblicazione manuale')->assertSee('Abilita pubblicazione automatica');
+        Http::assertNothingSent();
     }
 
     public function test_post_metrics_use_the_repost_count_returned_by_x(): void

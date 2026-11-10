@@ -213,12 +213,44 @@
                             </div>
                         </div>
 
+                        <div class="mt-5 rounded-2xl border border-line bg-surface p-4">
+                            <h3 class="font-semibold text-ink">Permessi di pubblicazione</h3>
+                            @unless (app()->environment('production'))
+                                <p class="mt-2 text-sm text-muted">L’invio reale su X è disponibile in produzione.</p>
+                            @endunless
+                            @unless ($connection->hasWriteAccess())
+                                <p class="mt-2 text-sm text-muted">Ricollega l’account per concedere il permesso di pubblicare.</p>
+                            @endunless
+
+                            @foreach (['manual' => 'manuale', 'automatic' => 'automatica'] as $mode => $label)
+                                @php($automatic = $mode === 'automatic')
+                                @php($enabled = $automatic ? $connection->automatic_publishing_enabled : $connection->manual_publishing_enabled)
+                                <div class="mt-4 border-t border-line pt-4">
+                                    <div class="flex flex-wrap items-center justify-between gap-2">
+                                        <h4 class="text-sm font-semibold">Pubblicazione {{ $label }}</h4>
+                                        <span class="ui-badge {{ $connection->canPublish($automatic) ? 'ui-tone-success' : '' }}">{{ $connection->canPublish($automatic) ? 'Abilitata' : 'Sospesa' }}</span>
+                                    </div>
+                                    <p class="mt-2 text-sm text-muted">{{ $automatic ? 'Invia le proposte approvate all’orario previsto nei siti configurati.' : 'Consente l’invio di una proposta dopo la conferma con «Pubblica ora».' }}</p>
+                                    @if ($enabled || $connection->hasWriteAccess())
+                                        <form method="POST" action="{{ route('x.publishing.update') }}" class="mt-3" data-confirm="{{ $enabled ? 'Vuoi sospendere la pubblicazione '.$label.' su X?' : ($automatic ? 'Vuoi abilitare la pubblicazione automatica? I siti configurati potranno inviare anche le proposte approvate già in scadenza.' : 'Vuoi abilitare l’invio con «Pubblica ora»?') }}" onsubmit="return confirm(this.dataset.confirm)">
+                                            @csrf
+                                            @method('PATCH')
+                                            <input type="hidden" name="account" value="{{ $connection->x_user_id }}">
+                                            <input type="hidden" name="mode" value="{{ $mode }}">
+                                            <input type="hidden" name="enabled" value="{{ $enabled ? '0' : '1' }}">
+                                            <button type="submit" class="ui-button {{ $enabled ? '' : 'ui-button-primary' }}">{{ $enabled ? 'Sospendi' : 'Abilita' }} pubblicazione {{ $label }}</button>
+                                        </form>
+                                    @endif
+                                </div>
+                            @endforeach
+                        </div>
+
                         <a href="{{ route('x.connect') }}" class="mt-5 w-full ui-button">Cambia account X</a>
                         @unless (in_array('media.write', $connection->scopes ?? [], true))
                             <p class="mt-3 text-sm text-muted">Ricollega l’account per autorizzare il caricamento delle immagini su X.</p>
                             <a href="{{ route('x.connect') }}" class="mt-2 w-full ui-button">Ricollega per le immagini</a>
                         @endunless
-                        <form method="POST" action="{{ route('x.destroy') }}" class="mt-3" data-confirm="Vuoi scollegare l’account X usato per pubblicare?" onsubmit="return confirm(this.dataset.confirm)">
+                        <form method="POST" action="{{ route('x.destroy') }}" class="mt-3" data-confirm="Vuoi scollegare l’account X? L’invio automatico verrà disattivato per tutti i siti." onsubmit="return confirm(this.dataset.confirm)">
                             @csrf
                             @method('DELETE')
                             <button type="submit" class="w-full ui-button ui-button-danger">Scollega account</button>

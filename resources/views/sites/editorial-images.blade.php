@@ -21,7 +21,7 @@
                 <p class="mt-4 ui-alert ui-tone-danger" role="alert">{{ $errors->first() }}</p>
             @endif
 
-            @if ($images !== [] || $proposal->image_attachments)
+            @if ($images !== [] || $proposal->image_attachments !== [])
                 <form method="POST" action="{{ route('sites.editorial-plan.proposals.images.update', [$site, $proposal]) }}" class="mt-5 space-y-5">
                     @csrf
                     @method('PATCH')
@@ -49,7 +49,7 @@
                             Confermo di poter usare le pagine selezionate per la promozione su X.
                         </label>
                     @endif
-                    <button type="submit" class="ui-button ui-button-primary">{{ $images === [] ? 'Rimuovi allegati' : 'Salva selezione' }}</button>
+                    <button type="submit" class="ui-button ui-button-primary">{{ $images === [] ? 'Usa solo testo' : 'Salva selezione' }}</button>
                 </form>
             @endif
         </section>

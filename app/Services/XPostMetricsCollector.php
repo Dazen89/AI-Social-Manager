@@ -13,13 +13,14 @@ class XPostMetricsCollector
 
     public function runDue(): int
     {
-        if (! app()->environment('production') || ! config('services.x.auto_publish_allowed')) {
+        if (! app()->environment('production')) {
             return 0;
         }
 
         $connection = XConnection::query()->where('status', 'active')->first();
 
-        if (! $connection || ! in_array('tweet.read', $connection->scopes ?? [], true)) {
+        if (! ($connection?->manual_publishing_enabled || $connection?->automatic_publishing_enabled)
+            || ! in_array('tweet.read', $connection->scopes ?? [], true)) {
             return 0;
         }
 

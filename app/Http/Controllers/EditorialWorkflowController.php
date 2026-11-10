@@ -52,8 +52,10 @@ class EditorialWorkflowController extends Controller
             'eligibility_confirmed_by_user_id' => $request->user()->id,
         ]);
 
-        if ($values['status'] === 'excluded' && $content->proposal?->status === 'approved') {
-            $content->proposal->update(['status' => 'rejected', 'reviewed_by_user_id' => $request->user()->id, 'reviewed_at' => now()]);
+        if ($values['status'] === 'excluded') {
+            $content->proposal()->where('status', 'approved')->update([
+                'status' => 'rejected', 'reviewed_by_user_id' => $request->user()->id, 'reviewed_at' => now(),
+            ]);
         }
 
         return back()->with('status', 'Idoneità aggiornata.');
@@ -95,7 +97,7 @@ class EditorialWorkflowController extends Controller
             throw ValidationException::withMessages(['post_text' => 'Il testo deve terminare con il link della fonte.']);
         }
 
-        $proposal->update([
+        $this->updateEditableProposal($proposal, [
             'post_text' => trim($values['post_text']),
             'proposed_for' => $proposedFor,
             'status' => 'draft',
@@ -124,14 +126,22 @@ class EditorialWorkflowController extends Controller
             }
         }
 
-        $proposal->update([
+        $this->updateEditableProposal($proposal, [
             'status' => $values['status'],
             'reviewed_by_user_id' => $request->user()->id,
             'reviewed_at' => now(),
         ]);
 
         return back()->with('status', $values['status'] === 'approved'
-            ? 'Proposta approvata. La pubblicazione su X non è ancora attiva.'
+            ? 'Proposta approvata. Usa «Pubblica ora» per inviarla manualmente.'
             : 'Proposta scartata.');
+    }
+
+    private function updateEditableProposal(EditorialProposal $proposal, array $values): void
+    {
+        $updated = EditorialProposal::query()->whereKey($proposal->id)
+            ->whereIn('status', EditorialProposal::EDITABLE_STATUSES)->update($values);
+
+        abort_if($updated === 0 && ! in_array($proposal->refresh()->status, EditorialProposal::EDITABLE_STATUSES, true), 409);
     }
 }

@@ -6,6 +6,7 @@ use App\Exceptions\EditorialSourceVerificationException;
 use App\Exceptions\XApiException;
 use App\Models\EditorialProposal;
 use App\Models\XConnection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -18,14 +19,13 @@ class XPostPublisher
 
     public function runDue(): int
     {
-        if (! config('services.x.auto_publish_allowed')
-            || ! (app()->environment('production') || (app()->environment('testing') && config('services.x.test_fake_publish')))) {
+        if (! $this->deliveryEnvironmentAllowed()) {
             return 0;
         }
 
-        $connection = XConnection::query()->where('status', 'active')->first();
+        $connection = $this->writingConnection();
 
-        if (! $connection || ! in_array('tweet.write', $connection->scopes ?? [], true)) {
+        if (! $connection?->canPublish(automatic: true)) {
             return 0;
         }
 
@@ -39,8 +39,12 @@ class XPostPublisher
         $published = 0;
 
         foreach ($ids as $id) {
+            if (! $this->currentPublishingConnection($connection, automatic: true)) {
+                break;
+            }
+
             $claimed = EditorialProposal::query()->whereKey($id)->where('status', 'approved')
-                ->whereNull('delivery_attempted_at')->update([
+                ->whereNull('delivery_attempted_at')->where('proposed_for', '<=', now())->update([
                     'status' => 'delivering',
                     'delivery_attempted_at' => now(),
                 ]);
@@ -51,62 +55,174 @@ class XPostPublisher
 
             $proposal = EditorialProposal::query()->with('site.editorialSchedule', 'content.source')->findOrFail($id);
 
-            if (! $this->canPublish($proposal)) {
-                $this->returnToDraft($proposal, 'Pubblicazione bloccata. Verifica fonte, idoneità, URL e approvazione.');
-
-                continue;
-            }
-
-            try {
-                $mediaIds = $proposal->image_attachments ? $this->uploadAttachments($proposal, $connection) : [];
-            } catch (EditorialSourceVerificationException|XApiException $exception) {
-                $this->returnToDraft($proposal, $exception->getMessage());
-
-                continue;
-            } catch (Throwable) {
-                $this->returnToDraft($proposal, 'Caricamento delle immagini non riuscito. Verifica gli allegati e approva di nuovo la proposta.');
-
-                continue;
-            }
-
-            if ($mediaIds !== [] && ! $this->canPublish($proposal->refresh())) {
-                $this->returnToDraft($proposal, 'La fonte o l’idoneità è cambiata durante il caricamento. Verifica e approva di nuovo la proposta.');
-
-                continue;
-            }
-
-            try {
-                $xPostId = $this->x->createPost($connection, $proposal->post_text, $mediaIds);
-                $proposal->update(['status' => 'published', 'x_post_id' => $xPostId,
-                    'published_at' => now(), 'delivery_error' => null]);
+            if ($this->deliver($proposal, $connection, automatic: true)) {
                 $published++;
-            } catch (Throwable $exception) {
-                Log::warning('X post delivery uncertain', ['proposal_id' => $id, 'exception' => $exception::class]);
-                $proposal->update(['status' => 'delivery_uncertain',
-                    'delivery_error' => 'X non ha confermato la pubblicazione. Controlla l’account prima di intervenire: il sistema non ritenta automaticamente per evitare duplicati.']);
             }
         }
 
         return $published;
     }
 
-    private function canPublish(EditorialProposal $proposal): bool
+    public function writingConnection(): ?XConnection
+    {
+        $connection = XConnection::query()->where('status', 'active')->first();
+
+        return $connection?->hasWriteAccess() ? $connection : null;
+    }
+
+    public function manualPublicationProblem(EditorialProposal $proposal, ?XConnection $connection, array $attachments): ?string
+    {
+        if (! $this->deliveryEnvironmentAllowed()) {
+            return 'L’invio reale su X è disponibile in produzione.';
+        }
+
+        if (! $connection) {
+            return 'Collega un account X con il permesso di pubblicare.';
+        }
+
+        if (! $connection->canPublish(automatic: false)) {
+            return 'Abilita la pubblicazione manuale dell’account X nella pagina Social.';
+        }
+
+        if (! in_array($proposal->status, EditorialProposal::EDITABLE_STATUSES, true)
+            || $proposal->delivery_attempted_at || $proposal->x_post_id) {
+            return 'La proposta è già stata presa in carico. Controlla lo stato nel piano editoriale.';
+        }
+
+        if (! $this->hasEligibleContent($proposal)) {
+            return 'Verifica che il sito e la fonte siano attivi, che il capitolo sia idoneo e che il testo termini con il suo link pubblico.';
+        }
+
+        if ($attachments && ! in_array('media.write', $connection->scopes ?? [], true)) {
+            return 'Ricollega l’account X con il permesso media.write per pubblicare le immagini.';
+        }
+
+        return null;
+    }
+
+    public function manualRevision(EditorialProposal $proposal): string
+    {
+        return hash('sha256', json_encode([
+            $proposal->id, $proposal->content->id, $proposal->content->editorial_source_id, $proposal->content->external_id,
+            $proposal->content->public_url, $proposal->post_text, $proposal->image_attachments,
+        ], JSON_THROW_ON_ERROR));
+    }
+
+    public function publishNow(EditorialProposal $proposal, XConnection $connection, int $reviewerId, string $revision, array $attachments): EditorialProposal
+    {
+        $claimed = DB::transaction(function () use ($proposal, $connection, $reviewerId, $revision, $attachments): EditorialProposal {
+            $current = EditorialProposal::query()->lockForUpdate()->findOrFail($proposal->id);
+
+            if ($problem = $this->manualPublicationProblem($current, $connection, $attachments)) {
+                throw new XApiException($problem);
+            }
+
+            if (! hash_equals($this->manualRevision($current), $revision)) {
+                throw new XApiException('La proposta è cambiata. Riapri l’anteprima prima di pubblicare.');
+            }
+
+            $current->update([
+                'image_attachments' => $attachments,
+                'status' => 'delivering',
+                'delivery_attempted_at' => now(),
+                'reviewed_by_user_id' => $reviewerId,
+                'reviewed_at' => now(),
+                'delivery_error' => null,
+            ]);
+
+            return $current;
+        });
+
+        $this->deliver($claimed, $connection, automatic: false);
+
+        return $claimed->refresh();
+    }
+
+    private function deliveryEnvironmentAllowed(): bool
+    {
+        return app()->environment('production') || (app()->environment('testing') && config('services.x.test_fake_publish'));
+    }
+
+    private function currentPublishingConnection(XConnection $expected, bool $automatic): ?XConnection
+    {
+        $connection = XConnection::query()->find($expected->id);
+
+        return $connection?->canPublish($automatic) && $connection->x_user_id === $expected->x_user_id ? $connection : null;
+    }
+
+    private function deliver(EditorialProposal $proposal, XConnection $connection, bool $automatic): bool
+    {
+        if (! $this->canDeliver($proposal, $automatic)) {
+            $this->returnToDraft($proposal, 'Pubblicazione bloccata. Verifica fonte, idoneità, URL e approvazione.');
+
+            return false;
+        }
+
+        try {
+            $mediaIds = $proposal->image_attachments ? $this->uploadAttachments($proposal, $connection, $automatic) : [];
+        } catch (EditorialSourceVerificationException|XApiException $exception) {
+            $this->returnToDraft($proposal, $exception->getMessage());
+
+            return false;
+        } catch (Throwable) {
+            $this->returnToDraft($proposal, 'Caricamento delle immagini non riuscito. Verifica gli allegati e conferma di nuovo la proposta.');
+
+            return false;
+        }
+
+        if (! $this->canDeliver($proposal->refresh(), $automatic)) {
+            $this->returnToDraft($proposal, 'La fonte o l’idoneità è cambiata durante l’invio. Verifica e conferma di nuovo la proposta.');
+
+            return false;
+        }
+
+        $activeConnection = $this->currentPublishingConnection($connection, $automatic);
+
+        if (! $activeConnection) {
+            $this->returnToDraft($proposal, 'L’account X è cambiato o la pubblicazione è stata sospesa durante l’invio.');
+
+            return false;
+        }
+
+        try {
+            $xPostId = $this->x->createPost($activeConnection, $proposal->post_text, $mediaIds);
+            $proposal->update(['status' => 'published', 'x_post_id' => $xPostId,
+                'published_at' => now(), 'delivery_error' => null]);
+
+            return true;
+        } catch (Throwable $exception) {
+            Log::warning('X post delivery uncertain', ['proposal_id' => $proposal->id, 'exception' => $exception::class]);
+            $proposal->update(['status' => 'delivery_uncertain',
+                'delivery_error' => 'X non ha confermato la pubblicazione. Controlla l’account prima di intervenire: il sistema non ritenta automaticamente per evitare duplicati.']);
+
+            return false;
+        }
+    }
+
+    private function canDeliver(EditorialProposal $proposal, bool $automatic): bool
+    {
+        return $proposal->status === 'delivering' && $this->hasEligibleContent($proposal)
+            && (! $proposal->image_attachments || $proposal->reviewed_by_user_id !== null)
+            && (! $automatic || ($proposal->site->editorialSchedule?->enabled && $proposal->site->editorialSchedule?->x_autopublish_enabled
+                && $proposal->content->source->promotion_authorized_at));
+    }
+
+    private function hasEligibleContent(EditorialProposal $proposal): bool
     {
         $content = $proposal->content;
         $source = $content->source;
 
-        return $proposal->status === 'delivering' && $proposal->site->is_active
-            && $proposal->site->editorialSchedule?->enabled && $proposal->site->editorialSchedule?->x_autopublish_enabled
-            && $source->is_active && $source->verification_status === 'verified' && $source->promotion_authorized_at
+        return $proposal->platform === 'x' && $proposal->site->is_active
+            && $content->site_id === $proposal->site_id && $source->site_id === $proposal->site_id
+            && $source->is_active && $source->verification_status === 'verified'
             && $content->eligibility_status === 'eligible'
             && $source->containsPublicUrl($content->public_url) && str_starts_with($content->public_url, 'https://')
             && strtolower((string) parse_url($content->public_url, PHP_URL_HOST)) === strtolower($proposal->site->host)
-            && str_ends_with(trim($proposal->post_text), $content->public_url) && mb_strlen($proposal->post_text) <= 280
-            && (! $proposal->image_attachments || $proposal->reviewed_by_user_id !== null);
+            && str_ends_with(trim($proposal->post_text), $content->public_url) && mb_strlen($proposal->post_text) <= 280;
     }
 
     /** @return list<string> */
-    private function uploadAttachments(EditorialProposal $proposal, XConnection $connection): array
+    private function uploadAttachments(EditorialProposal $proposal, XConnection $connection, bool $automatic): array
     {
         if (! in_array('media.write', $connection->scopes ?? [], true)) {
             throw new XApiException('Ricollega l’account X con il permesso media.write, poi approva di nuovo la proposta.');
@@ -132,7 +248,23 @@ class XPostPublisher
             $images[] = $image;
         }
 
-        return array_map(fn (string $image): string => $this->x->uploadImage($connection, $image), $images);
+        $mediaIds = [];
+
+        foreach ($images as $image) {
+            $activeConnection = $this->currentPublishingConnection($connection, $automatic);
+
+            if (! $activeConnection) {
+                throw new XApiException('L’account X è cambiato o la pubblicazione è stata sospesa durante il caricamento.');
+            }
+
+            if (! in_array('media.write', $activeConnection->scopes ?? [], true)) {
+                throw new XApiException('Ricollega l’account X con il permesso media.write, poi approva di nuovo la proposta.');
+            }
+
+            $mediaIds[] = $this->x->uploadImage($activeConnection, $image);
+        }
+
+        return $mediaIds;
     }
 
     private function returnToDraft(EditorialProposal $proposal, string $message): void

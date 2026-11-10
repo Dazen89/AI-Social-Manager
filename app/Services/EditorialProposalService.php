@@ -9,6 +9,7 @@ use App\Models\AiIntegration;
 use App\Models\AiUsageRecord;
 use App\Models\EditorialContent;
 use App\Models\Site;
+use App\Models\XConnection;
 use App\Models\XPostMetricSnapshot;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Arr;
@@ -92,6 +93,8 @@ class EditorialProposalService
                 ->whereNotIn('editorial_content_id', $selectedIds)->update(['status' => 'deferred']);
 
             $saved = 0;
+            $autoApprovalEnabled = $site->editorialSchedule()->where('enabled', true)->where('x_autopublish_enabled', true)->exists()
+                && XConnection::query()->where('status', 'active')->first()?->canPublish(automatic: true);
 
             foreach ($proposals as $proposal) {
                 $content = $candidates->keyBy('id')->get($proposal['content_id']);
@@ -101,7 +104,7 @@ class EditorialProposalService
                     continue;
                 }
 
-                $autoApproved = $site->editorialSchedule?->x_autopublish_enabled
+                $autoApproved = $autoApprovalEnabled
                     && $content->eligibility_status === 'eligible'
                     && ! $draft->image_attachments
                     && $content->source->promotion_authorized_at !== null;

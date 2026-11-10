@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Exceptions\EditorialSourceVerificationException;
 use App\Models\EditorialProposal;
 use App\Models\Site;
+use App\Services\EditorialProposalImages;
 use App\Services\FoOlSlideSourceVerifier;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -16,6 +17,8 @@ class EditorialProposalImagesController extends Controller
 {
     private const MAX_IMAGES = 4;
 
+    public function __construct(private readonly EditorialProposalImages $selection) {}
+
     public function preview(Site $site, EditorialProposal $proposal, FoOlSlideSourceVerifier $reader): View
     {
         $this->ensureEditable($site, $proposal);
@@ -24,7 +27,7 @@ class EditorialProposalImagesController extends Controller
 
         if ($proposal->image_attachments === null) {
             try {
-                $suggestions = $this->suggestions($proposal, $reader->chapterImages($proposal->content));
+                $suggestions = $this->selection->suggestions($proposal, $reader->chapterImages($proposal->content));
             } catch (EditorialSourceVerificationException) {
                 // A chapter without accessible pages has no image preview.
             }
@@ -50,7 +53,7 @@ class EditorialProposalImagesController extends Controller
             $error = $exception->getMessage();
         }
 
-        $selectedIds = array_column($proposal->image_attachments ?? $this->suggestions($proposal, $images), 'id');
+        $selectedIds = array_column($proposal->image_attachments ?? $this->selection->suggestions($proposal, $images), 'id');
 
         return view('sites.editorial-images', [
             'site' => $site,
@@ -92,13 +95,7 @@ class EditorialProposalImagesController extends Controller
                         throw ValidationException::withMessages(['image_ids' => 'Una delle immagini selezionate non appartiene alle pagine disponibili del capitolo.']);
                     }
 
-                    $bytes = $reader->readChapterImage($content->source, $image['url']);
-                    $attachments[] = [
-                        'id' => $image['id'],
-                        'url' => $image['url'],
-                        'thumbnail' => $image['thumbnail'],
-                        'sha256' => hash('sha256', $bytes),
-                    ];
+                    $attachments[] = $this->selection->capture($content, $image);
                 }
             } catch (EditorialSourceVerificationException $exception) {
                 throw ValidationException::withMessages(['image_ids' => $exception->getMessage()]);
@@ -127,18 +124,9 @@ class EditorialProposalImagesController extends Controller
             ->with('status', 'Selezione salvata. Puoi ora approvare la proposta.');
     }
 
-    private function suggestions(EditorialProposal $proposal, array $images): array
-    {
-        // Keep the random-looking selection stable between the overview and the editor.
-        return collect($images)
-            ->sortBy(fn (array $image) => hash('sha256', $proposal->id.':'.$image['id']))
-            ->take(3)
-            ->all();
-    }
-
     private function ensureEditable(Site $site, EditorialProposal $proposal): void
     {
         abort_unless($proposal->site_id === $site->id && $proposal->platform === 'x', 404);
-        abort_unless(in_array($proposal->status, ['draft', 'approved', 'deferred', 'rejected'], true), 409);
+        abort_unless(in_array($proposal->status, EditorialProposal::EDITABLE_STATUSES, true), 409);
     }
 }

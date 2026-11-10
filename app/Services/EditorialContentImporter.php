@@ -67,8 +67,10 @@ class EditorialContentImporter
                         ] : []),
                     ]);
 
-                    if ($urlChanged && $item->proposal?->status === 'approved') {
-                        $item->proposal->update(['status' => 'draft', 'reviewed_by_user_id' => null, 'reviewed_at' => null]);
+                    if ($urlChanged) {
+                        $item->proposal()->where('status', 'approved')->update([
+                            'status' => 'draft', 'reviewed_by_user_id' => null, 'reviewed_at' => null,
+                        ]);
                     }
                 }
             }
