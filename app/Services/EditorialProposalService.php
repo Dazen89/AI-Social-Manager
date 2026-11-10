@@ -107,6 +107,7 @@ class EditorialProposalService
                 $autoApproved = $autoApprovalEnabled
                     && $content->eligibility_status === 'eligible'
                     && ! $draft->image_attachments
+                    && $draft->delivery_error === null
                     && $content->source->promotion_authorized_at !== null;
                 $draft->fill([
                     'site_id' => $site->id,

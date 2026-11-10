@@ -3,8 +3,10 @@
 namespace App\Services;
 
 use App\Exceptions\XApiException;
+use App\Exceptions\XPostRejectedException;
 use App\Models\IntegrationSetting;
 use App\Models\XConnection;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 
@@ -213,20 +215,43 @@ class XService
     /** @param list<string> $mediaIds */
     public function createPost(XConnection $connection, string $text, array $mediaIds = []): string
     {
+        try {
+            $token = $this->validAccessToken($connection);
+        } catch (XApiException $exception) {
+            throw new XPostRejectedException($exception->getMessage());
+        } catch (ConnectionException) {
+            throw new XPostRejectedException('Connessione con X interrotta durante il rinnovo dell’autorizzazione. Puoi confermare un nuovo invio.');
+        }
+
         $payload = ['text' => $text];
 
         if ($mediaIds !== []) {
             $payload['media'] = ['media_ids' => $mediaIds];
         }
 
-        $response = Http::withToken($this->validAccessToken($connection))
+        $response = Http::withToken($token)
             ->acceptJson()->timeout(15)
             ->post(self::CREATE_POST_ENDPOINT, $payload);
 
+        $status = $response->status();
+        $reason = match ($status) {
+            400, 422 => 'Verifica il testo, il link e le immagini del post.',
+            401 => 'Ricollega l’account X per rinnovare l’autorizzazione.',
+            402 => 'Controlla credito e fatturazione nella Developer Console di X.',
+            403 => 'Controlla i permessi dell’app, le restrizioni dell’account e se sul profilo esiste già un post identico.',
+            404 => 'Una risorsa richiesta da X non è disponibile. Verifica gli allegati e il collegamento dell’app.',
+            429 => 'È stato raggiunto un limite di richieste o di utilizzo. Controlla la Developer Console di X.',
+            default => null,
+        };
+
+        if ($reason !== null) {
+            throw new XPostRejectedException("X ha rifiutato la pubblicazione (HTTP {$status}). {$reason}", $status);
+        }
+
         $id = $response->json('data.id');
 
-        if ($response->failed() || ! is_string($id) || $id === '') {
-            throw new XApiException('X non ha confermato la pubblicazione del post.');
+        if (! $response->successful() || ! is_string($id) || $id === '') {
+            throw new XApiException('X non ha confermato la pubblicazione del post.', $status);
         }
 
         return $id;

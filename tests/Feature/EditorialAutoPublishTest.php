@@ -79,7 +79,44 @@ class EditorialAutoPublishTest extends TestCase
         $this->artisan('editorial:publish-due')->assertSuccessful();
 
         $this->assertSame('delivery_uncertain', $proposal->fresh()->status);
+        $this->assertStringContainsString('HTTP 503', $proposal->fresh()->delivery_error);
         Http::assertSentCount(1);
+    }
+
+    public function test_a_rejected_manual_post_returns_to_draft_with_a_safe_error_message(): void
+    {
+        $proposal = $this->dueProposal();
+        $proposal->update(['status' => 'draft', 'image_attachments' => []]);
+        $endpoint = route('sites.editorial-plan.proposals.publish.confirm', [$proposal->site, $proposal]);
+        config()->set('services.x.test_fake_publish', true);
+        Http::preventStrayRequests();
+        Http::fake(['https://api.x.com/2/tweets' => Http::response(['detail' => 'Synthetic provider detail'], 403)]);
+
+        $confirmation = $this->actingAs(User::query()->sole())->get($endpoint)->assertOk()->viewData('confirmation');
+        $this->post($endpoint, ['confirmation' => $confirmation])->assertSessionHas('workflow_error', fn (string $message) => str_contains($message, 'HTTP 403'));
+        $this->artisan('editorial:publish-due')->assertSuccessful();
+
+        $proposal->refresh();
+        $this->assertSame('draft', $proposal->status);
+        $this->assertNull($proposal->delivery_attempted_at);
+        $this->assertNull($proposal->x_post_id);
+        $this->assertStringContainsString('HTTP 403', $proposal->delivery_error);
+        $this->assertStringNotContainsString('Synthetic provider detail', $proposal->delivery_error);
+        Http::assertSentCount(1);
+    }
+
+    public function test_expired_authorization_returns_the_post_to_draft_before_sending(): void
+    {
+        $proposal = $this->dueProposal();
+        XConnection::query()->sole()->update(['token_expires_at' => now()->subMinute(), 'refresh_token' => null]);
+        config()->set('services.x.test_fake_publish', true);
+        Http::preventStrayRequests();
+
+        $this->artisan('editorial:publish-due')->assertSuccessful();
+
+        $this->assertSame('draft', $proposal->fresh()->status);
+        $this->assertStringContainsString('L’autorizzazione X è scaduta', $proposal->fresh()->delivery_error);
+        Http::assertNothingSent();
     }
 
     public function test_proposal_previews_three_images_and_publishes_up_to_four_manually_approved_images(): void

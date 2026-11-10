@@ -4,8 +4,10 @@ namespace App\Services;
 
 use App\Exceptions\EditorialSourceVerificationException;
 use App\Exceptions\XApiException;
+use App\Exceptions\XPostRejectedException;
 use App\Models\EditorialProposal;
 use App\Models\XConnection;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -190,10 +192,23 @@ class XPostPublisher
                 'published_at' => now(), 'delivery_error' => null]);
 
             return true;
+        } catch (XPostRejectedException $exception) {
+            $this->returnToDraft($proposal, $exception->getMessage());
+
+            return false;
         } catch (Throwable $exception) {
-            Log::warning('X post delivery uncertain', ['proposal_id' => $proposal->id, 'exception' => $exception::class]);
+            $status = $exception instanceof XApiException ? $exception->getCode() : 0;
+            $reason = match (true) {
+                $status !== 0 => "X ha risposto con HTTP {$status} senza confermare la pubblicazione.",
+                $exception instanceof ConnectionException => 'La connessione con X si è interrotta prima della conferma.',
+                default => 'X non ha confermato la pubblicazione.',
+            };
+
+            Log::warning('X post delivery uncertain', [
+                'proposal_id' => $proposal->id, 'exception' => $exception::class, 'http_status' => $status ?: null,
+            ]);
             $proposal->update(['status' => 'delivery_uncertain',
-                'delivery_error' => 'X non ha confermato la pubblicazione. Controlla l’account prima di intervenire: il sistema non ritenta automaticamente per evitare duplicati.']);
+                'delivery_error' => $reason.' Controlla il profilo X prima di intervenire. La proposta resta in verifica per evitare duplicati.']);
 
             return false;
         }
