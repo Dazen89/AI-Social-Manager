@@ -12,6 +12,7 @@ use App\Http\Controllers\GoogleAnalyticsConnectionController;
 use App\Http\Controllers\GoogleAnalyticsSettingsController;
 use App\Http\Controllers\GoogleSearchConsoleConnectionController;
 use App\Http\Controllers\GoogleSearchConsoleSettingsController;
+use App\Http\Controllers\InstallationSettingsController;
 use App\Http\Controllers\SiteAnalyticsOverviewController;
 use App\Http\Controllers\SiteController;
 use App\Http\Controllers\SiteEditorialPlanController;
@@ -35,6 +36,7 @@ Route::middleware('auth')->group(function (): void {
         Route::resource('users', UserManagementController::class)->only(['index', 'create', 'store', 'edit', 'update']);
         Route::patch('/users/{user}/access', [UserManagementController::class, 'updateAccess'])->name('users.access.update');
         Route::view('/settings', 'settings.index')->name('settings.index');
+        Route::patch('/settings', [InstallationSettingsController::class, 'update'])->name('settings.update');
         Route::resource('sites', SiteController::class)->only(['index', 'create', 'store', 'edit', 'update']);
         Route::get('/sites/{site}', SiteAnalyticsOverviewController::class)->name('sites.show');
         Route::get('/sites/{site}/editorial-plan', [SiteEditorialPlanController::class, 'show'])->name('sites.editorial-plan.show');

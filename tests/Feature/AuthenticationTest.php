@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\InstallationSetting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -68,6 +69,35 @@ class AuthenticationTest extends TestCase
             ->assertSee('Fuso orario dell’applicazione')
             ->assertDontSee('Google Analytics')
             ->assertDontSee('Google Search Console');
+    }
+
+    public function test_administrator_can_change_the_application_name_for_the_workspace_and_login(): void
+    {
+        $endpoint = route('settings.update');
+        $this->patch($endpoint, ['app_name' => 'Monitor interno'])->assertRedirect(route('login'));
+        $this->actingAs(User::factory()->create())->patch($endpoint, ['app_name' => 'Monitor interno'])->assertForbidden();
+
+        $this->actingAs(User::factory()->administrator()->create());
+        $this->from(route('settings.index'))->patch($endpoint, ['app_name' => '   '])->assertSessionHasErrors('app_name');
+        $this->patch($endpoint, ['app_name' => str_repeat('a', 81)])->assertSessionHasErrors('app_name');
+        $this->assertDatabaseCount('installation_settings', 0);
+
+        $this->patch($endpoint, ['app_name' => 'Monitor interno'])->assertRedirect(route('settings.index'));
+        $this->patch($endpoint, ['app_name' => '  Officina & Monitor  '])->assertRedirect(route('settings.index'));
+        $this->assertDatabaseCount('installation_settings', 1);
+        $this->assertDatabaseHas('installation_settings', ['key' => InstallationSetting::APP_NAME, 'value' => 'Officina & Monitor']);
+
+        config()->set('app.name', 'Nome del server');
+        $this->get(route('settings.index'))->assertOk()->assertSee('value="Officina &amp; Monitor"', false);
+        $this->get(route('dashboard'))->assertOk()
+            ->assertSee('<title>Dashboard — Officina &amp; Monitor</title>', false)
+            ->assertSee('title="Officina &amp; Monitor">Officina &amp; Monitor</span>', false);
+
+        $this->post(route('logout'))->assertRedirect(route('login'));
+        config()->set('app.name', 'Nome del server');
+        $this->get(route('login'))->assertOk()
+            ->assertSee('<title>Accedi — Officina &amp; Monitor</title>', false)
+            ->assertSee('title="Officina &amp; Monitor">Officina &amp; Monitor</span>', false);
     }
 
     public function test_user_cannot_log_in_with_invalid_credentials(): void

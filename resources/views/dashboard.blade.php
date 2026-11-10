@@ -1,6 +1,6 @@
 @extends('layouts.workspace')
 
-@section('title', 'Dashboard — AI Social Manager')
+@section('title', 'Dashboard — '.config('app.name'))
 
 @section('page')
     <main id="main-content" class="ui-page" tabindex="-1">

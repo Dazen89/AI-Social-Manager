@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Accedi — AI Social Manager')
+@section('title', 'Accedi — '.config('app.name'))
 
 @section('content')
     <main class="ui-auth">

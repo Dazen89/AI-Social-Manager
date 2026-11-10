@@ -2,7 +2,7 @@
 
 <aside id="workspace-sidebar" class="ui-sidebar" aria-label="Menu del workspace" data-sidebar>
     <div class="ui-sidebar-top">
-        <a href="{{ route('dashboard') }}"><x-brand /></a>
+        <a href="{{ route('dashboard') }}" class="min-w-0"><x-brand /></a>
         <button type="button" class="ui-icon-button ui-sidebar-close" aria-label="Chiudi navigazione" data-menu-close>
             <x-icon name="close" />
         </button>

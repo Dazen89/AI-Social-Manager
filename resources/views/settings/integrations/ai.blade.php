@@ -146,7 +146,7 @@
                     </div>
                     <div class="mt-4 rounded-xl border border-warning-ink/22 bg-warning-soft p-4 text-sm leading-6 text-warning-ink">
                         <p class="font-semibold text-warning-ink">Prima di creare la chiave</p>
-                        <p class="mt-1">Se OpenAI ti mostra un campo per un <strong>codice di autenticazione</strong>, sei ancora nel login della piattaforma. Quel codice serve solo a verificare l’accesso al tuo account (per esempio tramite il metodo di verifica mostrato da OpenAI): <strong>non è la API key</strong> e non devi abilitarlo dentro Monitoring Hub.</p>
+                        <p class="mt-1">Se OpenAI ti mostra un campo per un <strong>codice di autenticazione</strong>, sei ancora nel login della piattaforma. Quel codice serve solo a verificare l’accesso al tuo account (per esempio tramite il metodo di verifica mostrato da OpenAI): <strong>non è la API key</strong> e non devi abilitarlo in questa applicazione.</p>
                         <p class="mt-2">Completa il login solo se riconosci l’account e il metodo di verifica. Dopo l’accesso devi arrivare alla pagina del progetto con il pulsante per creare una nuova chiave segreta. Se non riconosci la richiesta o non puoi ricevere il codice, interrompi il flusso e recupera prima l’accesso all’account OpenAI.</p>
                     </div>
                     <ol class="mt-4 list-decimal space-y-2 pl-5 text-sm leading-6 text-muted">
