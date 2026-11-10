@@ -90,9 +90,12 @@ class EditorialProposalPublishController extends Controller
             return $overview->with('workflow_error', $exception->getMessage());
         }
 
-        return $published->status === 'published'
-            ? $overview->withFragment('proposal-'.$proposal->id)->with('status', 'Post pubblicato su X.')
-            : $overview->withFragment('proposal-'.$proposal->id)->with('workflow_error', $published->delivery_error);
+        if ($published->status === 'published') {
+            return redirect()->route('sites.editorial-plan.show', ['site' => $site, 'published' => 1, 'proposal' => $proposal->id])
+                ->withFragment('proposal-'.$proposal->id)->with('status', 'Post pubblicato su X.');
+        }
+
+        return $overview->withFragment('proposal-'.$proposal->id)->with('workflow_error', $published->delivery_error);
     }
 
     public function reopen(Request $request, Site $site, EditorialProposal $proposal): RedirectResponse

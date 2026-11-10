@@ -360,7 +360,9 @@ class EditorialAutoPublishTest extends TestCase
             $confirmation['images_confirmed'] = '1';
         }
 
-        $this->post($endpoint, $confirmation)->assertSessionHas('status', 'Post pubblicato su X.');
+        $publishedPage = route('sites.editorial-plan.show', ['site' => $proposal->site, 'published' => 1, 'proposal' => $proposal->id]);
+        $this->post($endpoint, $confirmation)->assertSessionHas('status', 'Post pubblicato su X.')
+            ->assertRedirect($publishedPage.'#proposal-'.$proposal->id);
         $this->post($endpoint, $confirmation)->assertSessionHas('workflow_error');
         $proposal->refresh();
         $this->assertSame('published', $proposal->status);
@@ -372,7 +374,8 @@ class EditorialAutoPublishTest extends TestCase
         $sent = $posts->first()[0];
         $this->assertSame($proposal->post_text, $sent['text']);
         $this->assertSame($mediaIds, data_get($sent->data(), 'media.media_ids', []));
-        $this->get($overview)->assertOk()->assertSee('Pubblicata su X')->assertDontSee($endpoint);
+        $this->get($publishedPage)->assertOk()->assertSee('id="proposal-'.$proposal->id.'"', false)
+            ->assertSee('Pubblicata su X')->assertDontSee($endpoint);
     }
 
     public static function manualImageSelections(): array

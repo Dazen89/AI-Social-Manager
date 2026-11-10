@@ -113,6 +113,7 @@
             @endif
         </section>
 
+        @php($calendarParams = ['site' => $site, 'published' => $includePublished ? 1 : null])
         <section class="ui-panel mt-8 p-6 sm:p-8" aria-labelledby="calendar-heading">
             <div class="flex flex-wrap items-center justify-between gap-4">
                 <div>
@@ -120,10 +121,10 @@
                     <p class="mt-1 text-sm text-muted">Il calendario mostra l’orario proposto per le bozze e quello effettivo per i post pubblicati ({{ $timezone }}). Puoi inviare una proposta con «Pubblica ora» o farla pubblicare all’ora prevista con il piano automatico attivo.</p>
                 </div>
                 <div class="ui-actions">
-                    <a href="{{ route('sites.editorial-plan.show', ['site' => $site, 'month' => $month->subMonth()->format('Y-m')]) }}" aria-label="Mese precedente" class="ui-button ui-button-small">←</a>
+                    <a href="{{ route('sites.editorial-plan.show', $calendarParams + ['month' => $month->subMonth()->format('Y-m')]) }}" aria-label="Mese precedente" class="ui-button ui-button-small">←</a>
                     <span class="min-w-32 text-center font-semibold capitalize text-ink">{{ $month->locale('it')->isoFormat('MMMM YYYY') }}</span>
-                    <a href="{{ route('sites.editorial-plan.show', ['site' => $site, 'month' => $month->addMonth()->format('Y-m')]) }}" aria-label="Mese successivo" class="ui-button ui-button-small">→</a>
-                    <a href="{{ route('sites.editorial-plan.show', $site) }}" class="ui-button ui-button-small">Oggi</a>
+                    <a href="{{ route('sites.editorial-plan.show', $calendarParams + ['month' => $month->addMonth()->format('Y-m')]) }}" aria-label="Mese successivo" class="ui-button ui-button-small">→</a>
+                    <a href="{{ route('sites.editorial-plan.show', $calendarParams) }}" class="ui-button ui-button-small">Oggi</a>
                 </div>
             </div>
 
@@ -145,7 +146,10 @@
                                             @php($date = $month->setDay($day)->format('Y-m-d'))
                                             <time datetime="{{ $date }}" class="inline-flex size-8 items-center justify-center rounded-full text-sm {{ $date === $today ? 'bg-accent font-bold text-white' : 'text-soft' }}">{{ $day }}</time>
                                             @foreach ($calendarProposals->get($date, collect()) as $proposal)
-                                                <a href="#proposal-{{ $proposal->id }}" class="mt-1 block rounded-lg bg-accent-soft px-2 py-1 text-xs text-accent-ink no-underline hover:bg-accent-soft">
+                                                @php($calendarPostPublished = $proposal->status === 'published')
+                                                @php($calendarPostParams = ['site' => $site, 'month' => $month->format('Y-m'), 'published' => $includePublished || $calendarPostPublished ? 1 : null, 'proposal' => $proposal->id])
+                                                @php($calendarPostUrl = $proposals->contains('id', $proposal->id) ? '' : route('sites.editorial-plan.show', $calendarPostParams))
+                                                <a href="{{ $calendarPostUrl }}#proposal-{{ $proposal->id }}" class="mt-1 block rounded-lg px-2 py-1 text-xs no-underline {{ $calendarPostPublished ? 'ui-tone-success' : 'bg-accent-soft text-accent-ink' }}">
                                                     <span class="font-semibold">{{ ($proposal->published_at ?? $proposal->proposed_for)->setTimezone($timezone)->format('H:i') }} · {{ $proposal->content->series_title }}</span>
                                                     <span class="block">{{ match ($proposal->status) { 'approved' => 'Approvata', 'published' => 'Pubblicata su X', 'delivery_uncertain' => 'Esito X da verificare', default => 'Bozza' } }}</span>
                                                     <span class="mt-1 block text-soft">{{ \Illuminate\Support\Str::limit($proposal->rationale, 100) }}</span>
@@ -212,21 +216,34 @@
             </div>
         </details>
 
-        <section class="ui-panel mt-8 p-6 sm:p-8" aria-labelledby="proposals-heading">
+        <section id="proposals" class="ui-panel mt-8 p-6 sm:p-8" aria-labelledby="proposals-heading">
             <div class="flex flex-wrap items-start justify-between gap-4">
                 <div>
                     <h2 id="proposals-heading" class="text-xl font-semibold">Proposte editoriali</h2>
                     <p class="mt-2 text-sm text-muted">Capitoli candidabili senza proposta: {{ $candidateCount }}. L’AI rivaluta il piano a ogni controllo, anche senza nuove uscite, usando i dati GA4 e Search Console disponibili; gli orari restano ipotesi da verificare.</p>
                 </div>
+                <a href="{{ route('sites.editorial-plan.show', [
+                    'site' => $site,
+                    'month' => $month->format('Y-m'),
+                    'chapters' => $recentContents->currentPage() > 1 ? $recentContents->currentPage() : null,
+                    'published' => $includePublished ? null : 1,
+                ]) }}#proposals" class="ui-button ui-button-small">
+                    {{ $includePublished ? 'Nascondi le pubblicate' : 'Mostra anche le pubblicate' }}
+                </a>
             </div>
             @unless ($aiReady) <p class="mt-3 text-sm text-warning-ink">Per generare bozze, <a href="{{ route('settings.ai.index') }}" class="underline">verifica e attiva un servizio AI</a>.</p> @endunless
             @forelse ($proposals as $proposal)
                 @php($source = $proposal->content->source)
+                @php($isPublished = $proposal->status === 'published')
                 @php($canEditImages = $proposal->platform === 'x' && $source->is_active && in_array($proposal->status, \App\Models\EditorialProposal::EDITABLE_STATUSES, true))
-                <article id="proposal-{{ $proposal->id }}" class="mt-5 rounded-2xl border border-line-strong bg-subtle p-5">
+                <article id="proposal-{{ $proposal->id }}" class="mt-5 rounded-2xl border border-line-strong p-5 {{ $isPublished ? 'border-l-4 border-l-success-ink bg-surface' : 'bg-subtle' }}">
                     <div class="flex flex-wrap items-center justify-between gap-3">
                         <h3 class="font-semibold">{{ $proposal->content->series_title }} — {{ $proposal->content->title }}</h3>
-                        <span class="text-sm text-muted">X · {{ match ($proposal->status) { 'approved' => 'Approvata', 'rejected' => 'Scartata', 'deferred' => 'Rimandata dall’AI', 'published' => 'Pubblicata', 'delivering' => 'Invio in corso', 'delivery_uncertain' => 'Esito da verificare', default => 'Bozza' } }}</span>
+                        @if ($isPublished)
+                            <span class="ui-badge ui-tone-success">Pubblicata su X</span>
+                        @else
+                            <span class="text-sm text-muted">X · {{ match ($proposal->status) { 'approved' => 'Approvata', 'rejected' => 'Scartata', 'deferred' => 'Rimandata dall’AI', 'delivering' => 'Invio in corso', 'delivery_uncertain' => 'Esito da verificare', default => 'Bozza' } }}</span>
+                        @endif
                     </div>
                     <p class="mt-3 whitespace-pre-wrap break-words text-sm text-soft">{{ $proposal->post_text }}</p>
                     @if ($proposal->image_attachments && $source->is_active)
@@ -302,6 +319,9 @@
                     <p class="mt-2 text-sm leading-6 text-muted">Verifica una fonte e usa “Analizza ora”, oppure attiva i controlli periodici. I post selezionati dall’AI appariranno nel calendario con le motivazioni.</p>
                 </div>
             @endforelse
+            @if ($proposals->hasPages())
+                <div class="mt-5">{{ $proposals->links() }}</div>
+            @endif
             <p class="mt-5 text-sm text-warning-ink">La pubblicazione automatica richiede consenso della fonte, account X collegato, abilitazione per il sito e ambiente di produzione. In locale nessuna bozza viene inviata a X.</p>
             <p class="mt-4 text-sm text-muted">Fonti configurate: {{ $sourcesCount }}. <a href="{{ route('sites.editorial-plan.sources.index', $site) }}" class="font-medium text-accent-ink">Apri la gestione delle fonti →</a></p>
         </section>

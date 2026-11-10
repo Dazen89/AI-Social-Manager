@@ -24,6 +24,8 @@ class SiteEditorialPlanController extends Controller
         $today = CarbonImmutable::today($timezone);
         $todayUtc = $today->setTimezone('UTC');
         $proposalDate = 'COALESCE(published_at, proposed_for)';
+        $includePublished = $request->boolean('published');
+        $focusedProposal = $request->integer('proposal');
         $requestedMonth = $request->query('month');
         $month = is_string($requestedMonth) && preg_match('/^\d{4}-(0[1-9]|1[0-2])$/D', $requestedMonth)
             ? CarbonImmutable::createFromFormat('!Y-m-d', $requestedMonth.'-01', $timezone)
@@ -62,11 +64,14 @@ class SiteEditorialPlanController extends Controller
                 ->whereHas('source', fn ($query) => $query->where('is_active', true)->where('verification_status', 'verified'))
                 ->whereDoesntHave('proposal')->count(),
             'aiReady' => AiIntegration::query()->where('active_marker', 'active')->where('status', 'verified')->exists(),
+            'includePublished' => $includePublished,
             'proposals' => (clone $visibleProposals)
+                ->when(! $includePublished, fn ($query) => $query->where('status', '!=', 'published'))
+                ->when($focusedProposal > 0, fn ($query) => $query->orderByRaw('CASE WHEN id = ? THEN 0 ELSE 1 END', [$focusedProposal]))
                 ->orderByRaw("CASE WHEN {$proposalDate} >= ? THEN 0 WHEN {$proposalDate} IS NULL THEN 2 ELSE 1 END", [$todayUtc])
                 ->orderByRaw("CASE WHEN {$proposalDate} >= ? THEN {$proposalDate} END ASC", [$todayUtc])
                 ->orderByRaw("{$proposalDate} DESC")
-                ->orderByDesc('id')->limit(50)->get(),
+                ->orderByDesc('id')->paginate(50, ['*'], 'proposals')->withQueryString()->fragment('proposals'),
             'calendarProposals' => $visibleProposals->whereIn('status', ['draft', 'approved', 'published', 'delivery_uncertain'])
                 ->where(fn ($query) => $query->whereBetween('published_at', $monthRange)
                     ->orWhere(fn ($planned) => $planned->whereNull('published_at')->whereBetween('proposed_for', $monthRange)))

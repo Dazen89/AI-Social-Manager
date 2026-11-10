@@ -135,7 +135,7 @@ class SiteEditorialPlanTest extends TestCase
             ->assertSee('ottobre 2026');
     }
 
-    public function test_proposals_list_shows_today_and_upcoming_posts_before_history(): void
+    public function test_proposals_list_hides_published_posts_by_default_and_keeps_upcoming_posts_in_order(): void
     {
         $this->travelTo(CarbonImmutable::parse('2026-10-22 12:00:00', 'UTC'));
         $admin = User::factory()->administrator()->create();
@@ -148,11 +148,12 @@ class SiteEditorialPlanTest extends TestCase
             'older' => ['proposed_for' => now()->subDays(2)],
             'today' => ['proposed_for' => now()->subHour()],
             'tomorrow' => ['proposed_for' => now()->addDay()],
-            'published' => ['proposed_for' => now()->addDays(3), 'published_at' => now()->subDay(), 'status' => 'published'],
+            'published' => ['proposed_for' => now()->addDays(3), 'published_at' => now()->subDay(), 'status' => 'published', 'x_post_id' => '12345'],
             'later' => ['proposed_for' => now()->addDays(2)],
             'undated' => ['proposed_for' => null],
         ];
         $cards = [];
+        $publishedId = null;
 
         foreach ($dates as $name => $values) {
             $content = $source->contents()->create([
@@ -164,10 +165,25 @@ class SiteEditorialPlanTest extends TestCase
                 'post_text' => 'Una proposta di lettura. '.$content->public_url, 'rationale' => 'Esempio.',
             ]);
             $cards[$name] = 'id="proposal-'.$proposal->id.'"';
+            if ($name === 'published') {
+                $publishedId = $proposal->id;
+            }
         }
 
+        $calendarLink = route('sites.editorial-plan.show', ['site' => $site, 'month' => '2026-10', 'published' => 1, 'proposal' => $publishedId]).'#proposal-'.$publishedId;
         $this->actingAs($admin)->get(route('sites.editorial-plan.show', $site))->assertOk()
+            ->assertSee('Mostra anche le pubblicate')
+            ->assertDontSee($cards['published'], false)
+            ->assertSee($calendarLink)
+            ->assertSeeInOrder([$cards['today'], $cards['tomorrow'], $cards['later'], $cards['older'], $cards['undated']], false);
+
+        $this->get(route('sites.editorial-plan.show', ['site' => $site, 'published' => 1]))->assertOk()
+            ->assertSee('Nascondi le pubblicate')
+            ->assertSee('<span class="ui-badge ui-tone-success">Pubblicata su X</span>', false)
+            ->assertSee('https://x.com/i/web/status/12345')
             ->assertSeeInOrder([$cards['today'], $cards['tomorrow'], $cards['later'], $cards['published'], $cards['older'], $cards['undated']], false);
+
+        $this->get($calendarLink)->assertOk()->assertSeeInOrder([$cards['published'], $cards['today']], false);
     }
 
     public function test_source_must_belong_to_the_site_and_not_be_duplicated(): void
@@ -377,7 +393,11 @@ class SiteEditorialPlanTest extends TestCase
             ->assertDontSee('https://example.test/read/draft', false)
             ->assertDontSee('https://example.test/read/approved', false)
             ->assertSee('Fonte disattivata')
-            ->assertSee('href="#proposal-'.$proposals['published']->id.'"', false);
+            ->assertSee('Pubblicata su X')
+            ->assertDontSee('id="proposal-'.$proposals['published']->id.'"', false);
+
+        $this->get(route('sites.editorial-plan.show', ['site' => $site, 'published' => 1]))->assertOk()
+            ->assertSee('id="proposal-'.$proposals['published']->id.'"', false);
 
         $this->assertSame('draft', $proposals['draft']->fresh()->status);
         $this->assertSame('approved', $proposals['approved']->fresh()->status);
