@@ -34,4 +34,9 @@ class GoogleAnalyticsProperty extends Model
     {
         return $this->belongsTo(GoogleAnalyticsConnection::class, 'google_analytics_connection_id');
     }
+
+    public function hasAuthorizationHistory(): bool
+    {
+        return $this->google_analytics_connection_id !== null || $this->last_verified_at !== null;
+    }
 }

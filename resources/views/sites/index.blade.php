@@ -41,6 +41,8 @@
                             @if ($site->googleAnalyticsProperty)
                                 @if ($site->googleAnalyticsProperty->connection?->status === 'active')
                                     <p class="text-sm font-medium text-success-ink">Google Analytics collegato: {{ $site->googleAnalyticsProperty->property_name ?: $site->googleAnalyticsProperty->property_id }}</p>
+                                @elseif ($site->googleAnalyticsProperty->hasAuthorizationHistory())
+                                    <p class="text-sm font-medium text-warning-ink">Google Analytics da ricollegare.</p>
                                 @else
                                     <p class="text-sm font-medium text-warning-ink">Google Analytics: configurazione precedente non verificata</p>
                                 @endif

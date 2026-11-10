@@ -229,6 +229,34 @@ class SiteManagementTest extends TestCase
             ->assertSee('non rappresentano ancora una connessione verificata');
     }
 
+    public function test_failed_analytics_authorization_is_shown_as_a_connection_to_restore(): void
+    {
+        config()->set('services.google_analytics.client_id', 'synthetic-client');
+        config()->set('services.google_analytics.client_secret', 'synthetic-secret');
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
+        $connection = GoogleAnalyticsConnection::query()->create([
+            'access_token' => 'synthetic-token',
+            'status' => 'error',
+            'last_error' => 'L’autorizzazione Google non può essere rinnovata.',
+        ]);
+        $site->googleAnalyticsProperty()->create([
+            'google_analytics_connection_id' => $connection->id,
+            'account_id' => '123456789',
+            'property_id' => '987654321',
+            'property_name' => 'Proprietà dimostrativa',
+            'last_verified_at' => now(),
+        ]);
+
+        $this->actingAs($admin)->get(route('sites.edit', $site))->assertOk()
+            ->assertSee('Da ricollegare')
+            ->assertSee('Ricollega account Google')
+            ->assertSee('Proprietà dimostrativa')
+            ->assertSee($connection->last_error)
+            ->assertDontSee('Configurazione precedente');
+        $this->get(route('sites.index'))->assertOk()->assertSee('Google Analytics da ricollegare.');
+    }
+
     public function test_changing_site_host_invalidates_editorial_source_verification(): void
     {
         $admin = User::factory()->administrator()->create();

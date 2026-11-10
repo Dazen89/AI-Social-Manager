@@ -41,6 +41,7 @@
                     $analyticsProperty = $site->googleAnalyticsProperty;
                     $analyticsConnection = $analyticsProperty?->connection;
                     $analyticsIsConnected = $analyticsConnection?->status === 'active';
+                    $analyticsNeedsReconnection = ! $analyticsIsConnected && $analyticsProperty?->hasAuthorizationHistory();
                 @endphp
 
                 <div class="flex flex-wrap items-start justify-between gap-5">
@@ -49,6 +50,8 @@
                             <h3 class="text-lg font-semibold">Google Analytics 4</h3>
                             @if ($analyticsIsConnected)
                                 <span class="rounded-full bg-success-soft px-2.5 py-1 text-xs font-medium text-success-ink">Collegato</span>
+                            @elseif ($analyticsNeedsReconnection)
+                                <span class="rounded-full bg-warning-soft px-2.5 py-1 text-xs font-medium text-warning-ink">Da ricollegare</span>
                             @elseif ($analyticsProperty)
                                 <span class="rounded-full bg-warning-soft px-2.5 py-1 text-xs font-medium text-warning-ink">Configurazione precedente</span>
                             @else
@@ -80,7 +83,14 @@
                                 </div>
                             </dl>
                         @elseif ($analyticsProperty)
-                            <p class="mt-3 rounded-xl border border-warning-ink/22 bg-warning-soft px-4 py-3 text-sm leading-6 text-warning-ink">Sono presenti identificativi salvati con il flusso precedente. Restano conservati, ma non rappresentano ancora una connessione verificata con Google.</p>
+                            <div class="mt-3 rounded-xl border border-warning-ink/22 bg-warning-soft px-4 py-3 text-sm leading-6 text-warning-ink">
+                                @if ($analyticsNeedsReconnection)
+                                    <p>{{ $analyticsConnection?->last_error ?: 'L’accesso a Google Analytics richiede una nuova autorizzazione.' }}</p>
+                                @else
+                                    <p>Sono presenti identificativi salvati con il flusso precedente. Restano conservati, ma non rappresentano ancora una connessione verificata con Google.</p>
+                                @endif
+                                <p class="mt-1">Proprietà salvata <strong>{{ $analyticsProperty->property_id }}</strong>@if ($analyticsProperty->property_name) · {{ $analyticsProperty->property_name }}@endif. Autorizza l’account Google e seleziona questa proprietà.</p>
+                            </div>
                         @endif
                     </div>
 
@@ -90,7 +100,7 @@
                         @endif
 
                         @if ($googleAnalyticsOAuthConfigured)
-                            <a href="{{ route('google-analytics.connect', $site) }}" class="ui-button ui-button-primary">{{ $analyticsIsConnected ? 'Cambia account o proprietà' : 'Collega account Google' }}</a>
+                            <a href="{{ route('google-analytics.connect', $site) }}" class="ui-button ui-button-primary">{{ match (true) { $analyticsIsConnected => 'Cambia account o proprietà', $analyticsNeedsReconnection => 'Ricollega account Google', default => 'Collega account Google' } }}</a>
                             <a href="{{ route('google-analytics.settings.edit', $site) }}" class="ui-button">Credenziali OAuth e guida</a>
                         @else
                             <a href="{{ route('google-analytics.settings.edit', $site) }}" class="ui-button ui-button-primary">Configura Google Analytics</a>
