@@ -13,6 +13,7 @@ use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class EditorialProposalPublishController extends Controller
@@ -92,6 +93,36 @@ class EditorialProposalPublishController extends Controller
         return $published->status === 'published'
             ? $overview->withFragment('proposal-'.$proposal->id)->with('status', 'Post pubblicato su X.')
             : $overview->withFragment('proposal-'.$proposal->id)->with('workflow_error', $published->delivery_error);
+    }
+
+    public function reopen(Request $request, Site $site, EditorialProposal $proposal): RedirectResponse
+    {
+        $this->ensureSite($site, $proposal);
+        $values = $request->validate([
+            'confirmed_absent' => ['accepted'],
+            'delivery_revision' => ['required', 'integer', 'min:0'],
+        ], ['confirmed_absent.accepted' => 'Conferma di aver controllato il profilo X e che il post non compare.']);
+
+        DB::transaction(function () use ($proposal, $values): void {
+            $current = EditorialProposal::query()->lockForUpdate()->findOrFail($proposal->id);
+            abort_unless($current->status === 'delivery_uncertain' && $current->x_post_id === null && $current->published_at === null
+                && $current->delivery_revision === (int) $values['delivery_revision'] && $current->content->source->is_active, 409);
+
+            $current->update([
+                'status' => 'draft',
+                'manual_override' => true,
+                'image_attachments' => $current->image_attachments ?? [],
+                'reviewed_by_user_id' => null,
+                'reviewed_at' => null,
+                'delivery_attempted_at' => null,
+                'delivery_error' => null,
+                'delivery_revision' => $current->delivery_revision + 1,
+            ]);
+        });
+
+        return redirect()->route('sites.editorial-plan.show', $site)
+            ->withFragment('proposal-'.$proposal->id)
+            ->with('status', 'Proposta riaperta. Usa «Pubblica ora» per confermare un nuovo invio.');
     }
 
     private function ensureSite(Site $site, EditorialProposal $proposal): void

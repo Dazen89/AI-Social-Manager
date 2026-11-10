@@ -105,6 +105,59 @@ class EditorialAutoPublishTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    public function test_an_uncertain_post_can_be_reopened_and_sent_again_only_with_a_fresh_confirmation(): void
+    {
+        $proposal = $this->dueProposal();
+        $bytes = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR42mNgAAAAAgABSK+kcQAAAABJRU5ErkJggg==');
+        $imageUrl = 'https://example.test/pages/1.png';
+        $attachments = [['id' => 1, 'url' => $imageUrl, 'thumbnail' => $imageUrl, 'sha256' => hash('sha256', $bytes)]];
+        $proposal->update(['status' => 'draft', 'image_attachments' => $attachments]);
+        XConnection::query()->sole()->update(['scopes' => ['tweet.read', 'tweet.write', 'media.write']]);
+        config()->set('services.x.test_fake_publish', true);
+        $this->mock(PublicHostResolver::class)->shouldReceive('resolve')->andReturn('93.184.216.34');
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://example.test/api/reader/chapter/format/json?id=42' => Http::response([
+                'comic' => ['hidden' => 0, 'adult' => 0], 'chapter' => ['id' => 42, 'hidden' => 0],
+                'pages' => [['id' => 1, 'chapter_id' => 42, 'hidden' => 0, 'url' => $imageUrl, 'mime' => 'image/png']],
+            ]),
+            $imageUrl => Http::response($bytes, 200, ['Content-Type' => 'image/png']),
+            'https://api.x.com/2/media/upload' => Http::sequence()->push(['data' => ['id' => '101']])->push(['data' => ['id' => '102']]),
+            'https://api.x.com/2/tweets' => Http::sequence()->push([], 503)->push(['data' => ['id' => 'post-123']], 201),
+        ]);
+        $overview = route('sites.editorial-plan.show', $proposal->site);
+        $publish = route('sites.editorial-plan.proposals.publish.confirm', [$proposal->site, $proposal]);
+        $reopen = route('sites.editorial-plan.proposals.publish.reopen', [$proposal->site, $proposal]);
+
+        $preview = $this->actingAs(User::query()->sole())->get($publish)->assertOk();
+        $original = ['confirmation' => $preview->viewData('confirmation'), 'images_confirmed' => '1'];
+        $this->post($publish, $original)->assertSessionHas('workflow_error');
+        $this->get($overview)->assertOk()->assertSee('Riapri la proposta');
+        $this->get($publish)->assertConflict();
+
+        $this->from($overview)->patch($reopen, ['delivery_revision' => 0])->assertSessionHasErrors('confirmed_absent');
+        $this->patch($reopen, ['confirmed_absent' => '1', 'delivery_revision' => 1])->assertConflict();
+        $this->patch($reopen, ['confirmed_absent' => '1', 'delivery_revision' => 0])
+            ->assertRedirect($overview.'#proposal-'.$proposal->id);
+        $current = $proposal->fresh();
+        $this->assertSame('draft', $current->status);
+        $this->assertTrue($current->manual_override);
+        $this->assertSame($proposal->post_text, $current->post_text);
+        $this->assertSame($attachments, $current->image_attachments);
+        $this->assertNull($current->delivery_attempted_at);
+        $this->assertSame(1, $current->delivery_revision);
+
+        $this->artisan('editorial:publish-due')->assertSuccessful();
+        $this->post($publish, $original)->assertSessionHas('workflow_error', 'La proposta è cambiata. Riapri l’anteprima prima di pubblicare.');
+        $this->assertCount(1, Http::recorded(fn ($request) => $request->url() === 'https://api.x.com/2/tweets'));
+
+        $preview = $this->get($publish)->assertOk()->assertSee($proposal->post_text)->assertSee($imageUrl);
+        $this->post($publish, ['confirmation' => $preview->viewData('confirmation'), 'images_confirmed' => '1'])
+            ->assertSessionHas('status', 'Post pubblicato su X.');
+        $this->assertSame('post-123', $proposal->fresh()->x_post_id);
+        $this->assertCount(2, Http::recorded(fn ($request) => $request->url() === 'https://api.x.com/2/tweets'));
+    }
+
     public function test_expired_authorization_returns_the_post_to_draft_before_sending(): void
     {
         $proposal = $this->dueProposal();

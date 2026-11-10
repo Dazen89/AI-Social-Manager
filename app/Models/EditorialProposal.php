@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'post_text', 'rationale', 'proposed_for', 'source_snapshot', 'generated_at',
     'reviewed_by_user_id', 'reviewed_at',
     'manual_override', 'image_attachments',
-    'x_post_id', 'published_at', 'delivery_attempted_at', 'delivery_error',
+    'x_post_id', 'published_at', 'delivery_attempted_at', 'delivery_error', 'delivery_revision',
 ])]
 class EditorialProposal extends Model
 {
@@ -29,6 +29,7 @@ class EditorialProposal extends Model
             'image_attachments' => 'encrypted:array',
             'published_at' => 'datetime',
             'delivery_attempted_at' => 'datetime',
+            'delivery_revision' => 'integer',
         ];
     }
 

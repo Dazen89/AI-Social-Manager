@@ -249,6 +249,21 @@
                     <p class="mt-2 text-sm text-soft"><span class="font-semibold">Motivazione:</span> {{ $proposal->rationale }}</p>
                     @if ($proposal->x_post_id) <a href="https://x.com/i/web/status/{{ $proposal->x_post_id }}" target="_blank" rel="noopener noreferrer" class="mt-2 inline-block text-sm text-accent-ink">Apri il post su X ↗</a> @endif
                     @if ($proposal->delivery_error) <p class="mt-2 text-sm text-danger-ink">{{ $proposal->delivery_error }}</p> @endif
+                    @if ($proposal->platform === 'x' && $proposal->status === 'delivery_uncertain' && $proposal->x_post_id === null && $proposal->published_at === null && $source->is_active)
+                        <details class="mt-3">
+                            <summary class="cursor-pointer text-sm font-medium text-accent-ink">Riapri la proposta</summary>
+                            <form method="POST" action="{{ route('sites.editorial-plan.proposals.publish.reopen', [$site, $proposal]) }}" class="mt-3 space-y-3">
+                                @csrf @method('PATCH')
+                                <input type="hidden" name="delivery_revision" value="{{ $proposal->delivery_revision }}">
+                                <p class="text-sm text-muted">Controlla il profilo dell’account X usato per l’invio. Se il post è assente, puoi riaprire la stessa bozza e usare «Pubblica ora».</p>
+                                <label class="flex items-center gap-2 text-sm">
+                                    <input type="checkbox" name="confirmed_absent" value="1" required>
+                                    Ho verificato che il post non compare sul profilo X.
+                                </label>
+                                <button type="submit" class="ui-button ui-button-small">Riapri in bozza</button>
+                            </form>
+                        </details>
+                    @endif
                     @if ($proposal->content->eligibility_status !== 'eligible')
                         <p class="mt-3 text-sm text-warning-ink">Contenuto da verificare: conferma diritti e idoneità prima di approvare la proposta.</p>
                         @if ($proposal->content->eligibility_status === 'pending')

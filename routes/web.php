@@ -72,6 +72,8 @@ Route::middleware('auth')->group(function (): void {
             ->middleware('throttle:20,1,editorial-publish-preview')->name('sites.editorial-plan.proposals.publish.confirm');
         Route::post('/sites/{site}/editorial-plan/proposals/{proposal}/publish', [EditorialProposalPublishController::class, 'store'])
             ->middleware('throttle:5,1,editorial-publish')->name('sites.editorial-plan.proposals.publish.store');
+        Route::patch('/sites/{site}/editorial-plan/proposals/{proposal}/publish/reopen', [EditorialProposalPublishController::class, 'reopen'])
+            ->name('sites.editorial-plan.proposals.publish.reopen');
         Route::post('/sites/{site}/analytics/insights', [AnalyticsInsightController::class, 'store'])
             ->name('sites.analytics-insights.store');
 

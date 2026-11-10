@@ -106,7 +106,7 @@ class XPostPublisher
     {
         return hash('sha256', json_encode([
             $proposal->id, $proposal->content->id, $proposal->content->editorial_source_id, $proposal->content->external_id,
-            $proposal->content->public_url, $proposal->post_text, $proposal->image_attachments,
+            $proposal->content->public_url, $proposal->post_text, $proposal->image_attachments, (int) $proposal->delivery_revision,
         ], JSON_THROW_ON_ERROR));
     }
 
