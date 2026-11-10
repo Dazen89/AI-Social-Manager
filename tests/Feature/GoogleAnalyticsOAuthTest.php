@@ -93,6 +93,7 @@ class GoogleAnalyticsOAuthTest extends TestCase
 
         $authorizationResponse = $this->actingAs($admin)->get(route('google-analytics.connect', $site));
         parse_str((string) parse_url($authorizationResponse->headers->get('Location'), PHP_URL_QUERY), $query);
+        config()->set('services.google_analytics.redirect_uri', 'https://proxy.example.test/integrations/google-analytics/callback');
 
         $this->get(route('google-analytics.callback', [
             'state' => $query['state'],
@@ -136,9 +137,31 @@ class GoogleAnalyticsOAuthTest extends TestCase
             ->assertSee('G-ABC1234567');
 
         Http::assertSent(fn (Request $request): bool => $request->url() === 'https://oauth2.googleapis.com/token'
-            && $request['grant_type'] === 'authorization_code');
+            && $request['grant_type'] === 'authorization_code' && $request['redirect_uri'] === $query['redirect_uri']);
         Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/v1beta/accountSummaries')
             && $request->hasHeader('Authorization', 'Bearer access-token'));
+    }
+
+    public function test_token_exchange_displays_a_safe_actionable_google_error(): void
+    {
+        $this->configureOAuth();
+        Http::preventStrayRequests();
+        Http::fake(['https://oauth2.googleapis.com/token' => Http::response([
+            'error' => 'invalid_client',
+            'error_description' => 'Synthetic detail from the provider',
+        ], 401)]);
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
+        $authorization = $this->actingAs($admin)->get(route('google-analytics.connect', $site));
+        parse_str((string) parse_url($authorization->headers->get('Location'), PHP_URL_QUERY), $query);
+
+        $this->get(route('google-analytics.callback', ['state' => $query['state'], 'code' => 'authorization-code']))
+            ->assertRedirect(route('sites.edit', $site));
+        $this->get(route('sites.edit', $site))->assertOk()
+            ->assertSee('invalid_client')
+            ->assertSee('Client ID e Client Secret appartengano allo stesso client')
+            ->assertDontSee('Synthetic detail from the provider');
+        $this->assertDatabaseCount('google_analytics_connections', 0);
     }
 
     public function test_property_selection_is_checked_against_google_response(): void

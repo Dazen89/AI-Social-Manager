@@ -53,13 +53,13 @@ class GoogleAnalyticsService
         return (string) (config('services.google_analytics.redirect_uri') ?: route('google-analytics.callback'));
     }
 
-    public function authorizationUrl(string $state): string
+    public function authorizationUrl(string $state, string $redirectUri): string
     {
         $credentials = $this->credentials();
 
         $query = http_build_query([
             'client_id' => $credentials['client_id'] ?? null,
-            'redirect_uri' => $this->redirectUri(),
+            'redirect_uri' => $redirectUri,
             'response_type' => 'code',
             'scope' => config('services.google_analytics.scope'),
             'access_type' => 'offline',
@@ -74,7 +74,7 @@ class GoogleAnalyticsService
     /**
      * @return array{access_token: string, refresh_token: string, expires_in: int, scope: string|null}
      */
-    public function exchangeAuthorizationCode(string $code): array
+    public function exchangeAuthorizationCode(string $code, string $redirectUri): array
     {
         $credentials = $this->credentials();
         $response = Http::asForm()
@@ -85,13 +85,24 @@ class GoogleAnalyticsService
                 'client_secret' => $credentials['client_secret'] ?? null,
                 'code' => $code,
                 'grant_type' => 'authorization_code',
-                'redirect_uri' => $this->redirectUri(),
+                'redirect_uri' => $redirectUri,
             ]);
 
-        if ($response->failed()) {
-            $this->markDatabaseCredentialsError('Google non ha accettato le credenziali OAuth configurate.');
+        if (! $response->successful()) {
+            $error = $response->json('error');
+            $status = $response->status();
+            $message = match ($error) {
+                'invalid_client', 'unauthorized_client' => "Google ha rifiutato il client OAuth ({$error}). Verifica che Client ID e Client Secret appartengano allo stesso client di tipo Applicazione web.",
+                'redirect_uri_mismatch' => 'Google ha rifiutato l’URL di callback (redirect_uri_mismatch). Confronta l’URI mostrato nelle credenziali di Analytics con quello autorizzato in Google Cloud.',
+                'invalid_grant' => 'Google ha rifiutato il codice (invalid_grant). Avvia un nuovo collegamento. Se si ripete, verifica l’URI di callback e il client OAuth configurato.',
+                default => "Google ha rifiutato lo scambio del codice di autorizzazione (HTTP {$status}). Riprova il collegamento.",
+            };
 
-            throw new GoogleAnalyticsException('Google non ha accettato il codice di autorizzazione. Riprova il collegamento.');
+            if (in_array($error, ['invalid_client', 'unauthorized_client', 'redirect_uri_mismatch'], true)) {
+                $this->markDatabaseCredentialsError($message);
+            }
+
+            throw new GoogleAnalyticsException($message);
         }
 
         $tokens = $response->json();

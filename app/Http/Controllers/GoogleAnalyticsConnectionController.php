@@ -26,15 +26,17 @@ class GoogleAnalyticsConnectionController extends Controller
         $this->discardPendingSelection($request, $site);
 
         $state = Str::random(64);
+        $redirectUri = $analytics->redirectUri();
 
         session()->put('google_analytics_oauth', [
             'state_hash' => hash('sha256', $state),
             'site_id' => $site->id,
             'user_id' => auth()->id(),
             'expires_at' => now()->addMinutes(10)->timestamp,
+            'redirect_uri' => $redirectUri,
         ]);
 
-        return redirect()->away($analytics->authorizationUrl($state));
+        return redirect()->away($analytics->authorizationUrl($state, $redirectUri));
     }
 
     public function callback(Request $request, GoogleAnalyticsService $analytics): RedirectResponse
@@ -63,7 +65,7 @@ class GoogleAnalyticsConnectionController extends Controller
         }
 
         try {
-            $tokens = $analytics->exchangeAuthorizationCode($code);
+            $tokens = $analytics->exchangeAuthorizationCode($code, $context['redirect_uri'] ?? $analytics->redirectUri());
 
             $connection = GoogleAnalyticsConnection::query()->create([
                 'authorized_by_user_id' => $request->user()->id,
