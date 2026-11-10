@@ -7,6 +7,7 @@
         @case('globe') <circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/> @break
         @case('ai') <path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2L12 3Zm7 12 1 2.5 2.5 1L20 19.5 19 22l-1-2.5-2.5-1 2.5-1L19 15Z"/> @break
         @case('social') <path d="M3 5h18v12h-9l-4 4v-4H3zM7 9h10m-10 4h6"/> @break
+        @case('users') <circle cx="9" cy="8" r="3"/><path d="M3 20v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2m1-15a3 3 0 0 1 0 6m5 9v-2a4 4 0 0 0-3-3.9"/> @break
         @case('settings') <path d="M4 6h16M4 12h16M4 18h16"/><path d="M8 3v6m8 0v6m-5 0v6" stroke-width="2.5"/> @break
         @case('logout') <path d="M10 4H4v16h6m4-12 4 4-4 4m-6-4h12"/> @break
         @case('menu') <path d="M4 6h16M4 12h16M4 18h16"/> @break

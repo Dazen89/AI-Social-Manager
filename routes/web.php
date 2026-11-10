@@ -15,6 +15,7 @@ use App\Http\Controllers\GoogleSearchConsoleSettingsController;
 use App\Http\Controllers\SiteAnalyticsOverviewController;
 use App\Http\Controllers\SiteController;
 use App\Http\Controllers\SiteEditorialPlanController;
+use App\Http\Controllers\UserManagementController;
 use App\Http\Controllers\XConnectionController;
 use App\Http\Controllers\XSettingsController;
 use Illuminate\Support\Facades\Route;
@@ -31,6 +32,8 @@ Route::middleware('auth')->group(function (): void {
 
     Route::middleware('admin')->group(function (): void {
         Route::get('/dashboard', DashboardController::class)->name('dashboard');
+        Route::resource('users', UserManagementController::class)->only(['index', 'create', 'store', 'edit', 'update']);
+        Route::patch('/users/{user}/access', [UserManagementController::class, 'updateAccess'])->name('users.access.update');
         Route::view('/settings', 'settings.index')->name('settings.index');
         Route::resource('sites', SiteController::class)->only(['index', 'create', 'store', 'edit', 'update']);
         Route::get('/sites/{site}', SiteAnalyticsOverviewController::class)->name('sites.show');

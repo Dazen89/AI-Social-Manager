@@ -14,6 +14,8 @@ use Illuminate\Notifications\Notifiable;
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
+    public const SESSION_VERSION_KEY = 'user_session_version';
+
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
 
@@ -28,6 +30,13 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'is_admin' => 'boolean',
             'password' => 'hashed',
+            'session_version' => 'integer',
         ];
+    }
+
+    public function invalidateSessions(): void
+    {
+        $this->session_version = (int) $this->session_version + 1;
+        $this->setRememberToken(null);
     }
 }
