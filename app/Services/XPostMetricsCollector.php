@@ -2,13 +2,20 @@
 
 namespace App\Services;
 
+use App\Exceptions\XApiException;
 use App\Models\EditorialProposal;
 use App\Models\XConnection;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
-use Throwable;
 
 class XPostMetricsCollector
 {
+    private const FIRST_MILESTONE_HOURS = 24;
+
+    private const FINAL_MILESTONE_HOURS = 168;
+
     public function __construct(private readonly XService $x) {}
 
     public function runDue(): int
@@ -24,25 +31,67 @@ class XPostMetricsCollector
             return 0;
         }
 
+        return (int) Cache::lock('editorial:x-metrics-collection', 120)
+            ->get(fn (): int => $this->collect($connection));
+    }
+
+    private function collect(XConnection $connection): int
+    {
+        $now = now()->toImmutable();
+        $weekCutoff = $now->subHours(self::FINAL_MILESTONE_HOURS);
         $proposals = EditorialProposal::query()->where('status', 'published')
-            ->whereNotNull('x_post_id')->where('published_at', '>=', now()->subDays(30))
-            ->whereDoesntHave('metricSnapshots', fn ($query) => $query->where('collected_at', '>', now()->subHours(6)))
-            ->orderBy('published_at')->limit(10)->get();
+            ->whereNotNull('x_post_id')
+            ->where('published_at', '>', $now->subDays(30))
+            ->where(fn (Builder $query) => $query->whereNull('x_metrics_attempted_at')
+                ->orWhere('x_metrics_attempted_at', '<=', $now->subHours(6)))
+            ->where(fn (Builder $due) => $due
+                ->where(fn (Builder $first) => $first
+                    ->where('published_at', '<=', $now->subHours(self::FIRST_MILESTONE_HOURS))
+                    ->where('published_at', '>', $weekCutoff)
+                    ->whereDoesntHave('metricSnapshots', fn (Builder $snapshot) => $snapshot
+                        ->where('milestone_hours', self::FIRST_MILESTONE_HOURS)))
+                ->orWhere(fn (Builder $final) => $final
+                    ->where('published_at', '<=', $weekCutoff)
+                    ->whereDoesntHave('metricSnapshots', fn (Builder $snapshot) => $snapshot
+                        ->where('milestone_hours', self::FINAL_MILESTONE_HOURS))))
+            ->withExists('metricSnapshots')
+            ->orderBy('x_metrics_attempted_at')
+            ->orderBy('metric_snapshots_exists')
+            ->orderBy('published_at')
+            ->orderBy('id')
+            ->limit(XService::POST_LOOKUP_LIMIT)
+            ->get();
+
+        if ($proposals->isEmpty()) {
+            return 0;
+        }
+
+        EditorialProposal::query()->whereKey($proposals->modelKeys())->update(['x_metrics_attempted_at' => $now]);
+
+        try {
+            $metricsByPost = $this->x->postMetrics($connection, $proposals->pluck('x_post_id')->unique()->values()->all());
+        } catch (XApiException|ConnectionException $exception) {
+            Log::warning('X post metrics unavailable', ['exception' => $exception::class, 'code' => $exception->getCode()]);
+
+            return 0;
+        }
+
         $collected = 0;
+        $collectedAt = now();
 
         foreach ($proposals as $proposal) {
-            try {
-                $metrics = $this->x->postPublicMetrics($connection, $proposal->x_post_id);
+            $metrics = $metricsByPost[$proposal->x_post_id] ?? [];
 
-                if ($metrics === []) {
-                    continue;
-                }
-
-                $proposal->metricSnapshots()->create(['metrics' => $metrics, 'collected_at' => now()]);
-                $collected++;
-            } catch (Throwable $exception) {
-                Log::warning('X post metrics unavailable', ['proposal_id' => $proposal->id, 'exception' => $exception::class]);
+            if ($metrics === []) {
+                continue;
             }
+
+            $milestone = $proposal->published_at <= $weekCutoff ? self::FINAL_MILESTONE_HOURS : self::FIRST_MILESTONE_HOURS;
+            $snapshot = $proposal->metricSnapshots()->firstOrCreate(
+                ['milestone_hours' => $milestone],
+                ['metrics' => $metrics, 'collected_at' => $collectedAt],
+            );
+            $collected += (int) $snapshot->wasRecentlyCreated;
         }
 
         return $collected;

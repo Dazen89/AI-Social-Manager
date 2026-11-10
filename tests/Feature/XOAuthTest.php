@@ -146,15 +146,15 @@ class XOAuthTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_post_metrics_use_the_repost_count_returned_by_x(): void
+    public function test_post_metrics_lookup_keeps_available_counts_including_zero_clicks(): void
     {
         Http::preventStrayRequests();
-        Http::fake(['https://api.x.com/2/tweets/123*' => Http::response([
-            'data' => ['public_metrics' => [
-                'impression_count' => 250,
-                'retweet_count' => 4,
-                'reply_count' => 0,
-            ]],
+        Http::fake(['https://api.x.com/2/tweets?*' => Http::response([
+            'data' => [
+                ['id' => '123', 'public_metrics' => ['impression_count' => 250, 'retweet_count' => 4, 'reply_count' => 0],
+                    'non_public_metrics' => ['url_link_clicks' => 0]],
+                ['id' => '124', 'public_metrics' => ['impression_count' => 100]],
+            ],
         ])]);
         $connection = new XConnection([
             'access_token' => 'synthetic-token',
@@ -162,12 +162,13 @@ class XOAuthTest extends TestCase
         ]);
 
         $this->assertSame([
-            'impression_count' => 250,
-            'reply_count' => 0,
-            'repost_count' => 4,
-        ], app(XService::class)->postPublicMetrics($connection, '123'));
+            123 => ['impression_count' => 250, 'reply_count' => 0, 'repost_count' => 4, 'url_link_clicks' => 0],
+            124 => ['impression_count' => 100],
+        ], app(XService::class)->postMetrics($connection, ['123', '124', '125']));
 
         Http::assertSentCount(1);
+        Http::assertSent(fn ($request) => $request['ids'] === '123,124,125'
+            && $request['tweet.fields'] === 'public_metrics,non_public_metrics');
     }
 
     public function test_callback_rejects_an_invalid_state_without_calling_x(): void

@@ -8,6 +8,7 @@ use App\Exceptions\GoogleSearchConsoleException;
 use App\Models\AiIntegration;
 use App\Models\AiUsageRecord;
 use App\Models\EditorialContent;
+use App\Models\EditorialProposal;
 use App\Models\Site;
 use App\Models\XConnection;
 use App\Models\XPostMetricSnapshot;
@@ -170,16 +171,19 @@ class EditorialProposalService
             'x_post_metrics' => ['status' => 'unavailable'],
         ];
 
-        $postMetrics = XPostMetricSnapshot::query()
-            ->whereHas('proposal', fn ($query) => $query->where('site_id', $site->id)->where('status', 'published'))
-            ->with('proposal.content')->orderByDesc('collected_at')->limit(50)->get()
-            ->unique('editorial_proposal_id')->take(10);
+        $measuredPosts = $site->editorialProposals()
+            ->where('status', 'published')
+            ->where('published_at', '>', now()->subDays(30))
+            ->whereHas('metricSnapshots')
+            ->with(['content', 'metricSnapshots' => fn ($query) => $query
+                ->orderByDesc('milestone_hours')->orderByDesc('collected_at')->orderByDesc('id')->limit(2)])
+            ->orderByDesc('published_at')->orderByDesc('id')->limit(30)->get();
 
-        if ($postMetrics->isNotEmpty()) {
+        if ($measuredPosts->isNotEmpty()) {
             $signals['x_post_metrics'] = [
                 'status' => 'available',
-                'sample_size' => $postMetrics->count(),
-                'posts' => $postMetrics->map(fn (XPostMetricSnapshot $snapshot): array => $this->xPostSignal($snapshot))->values()->all(),
+                'sample_size' => $measuredPosts->count(),
+                'posts' => $measuredPosts->map(fn (EditorialProposal $proposal): array => $this->xPostSignal($proposal))->all(),
             ];
         }
 
@@ -217,27 +221,47 @@ class EditorialProposalService
     }
 
     /** @return array<string, mixed> */
-    private function xPostSignal(XPostMetricSnapshot $snapshot): array
+    private function xPostSignal(EditorialProposal $proposal): array
     {
-        $proposal = $snapshot->proposal;
-        $metrics = $snapshot->metrics;
-        $impressions = $metrics['impression_count'] ?? 0;
-        $interactions = Arr::except($metrics, ['impression_count']);
         $copy = trim(preg_replace('~https?://\S+~iu', '', $proposal->post_text) ?? '');
+        $snapshots = $proposal->metricSnapshots->whereNotNull('milestone_hours');
+
+        if ($snapshots->isEmpty()) {
+            $snapshots = $proposal->metricSnapshots->take(1);
+        }
 
         return [
             'series' => $proposal->content->series_title,
-            'published_at' => $proposal->published_at?->toIso8601String(),
-            'collected_at' => $snapshot->collected_at->toIso8601String(),
-            'metrics' => $metrics,
-            'interactions_per_100_impressions' => $impressions > 0 && $interactions !== []
-                ? array_map(fn (int $count): float => round(100 * $count / $impressions, 2), $interactions)
-                : null,
+            'published_at' => $proposal->published_at->toIso8601String(),
             'copy_format' => [
                 'characters' => mb_strlen($copy),
                 'has_question' => str_contains($copy, '?'),
                 'has_line_break' => str_contains($copy, "\n"),
             ],
+            'measurements' => $snapshots->map(fn (XPostMetricSnapshot $snapshot): array => $this->xMeasurement($proposal, $snapshot))
+                ->values()->all(),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function xMeasurement(EditorialProposal $proposal, XPostMetricSnapshot $snapshot): array
+    {
+        $metrics = Arr::except($snapshot->metrics, ['url_link_clicks']);
+        $clicks = $snapshot->metrics['url_link_clicks'] ?? null;
+        $impressions = $metrics['impression_count'] ?? 0;
+        $interactions = Arr::except($metrics, ['impression_count']);
+
+        return [
+            'target_age_hours' => $snapshot->milestone_hours,
+            'age_hours' => round($proposal->published_at->diffInHours($snapshot->collected_at), 1),
+            'metrics' => $metrics,
+            'interactions_per_100_impressions' => $impressions > 0 && $interactions !== []
+                ? array_map(fn (int $count): float => round(100 * $count / $impressions, 2), $interactions)
+                : null,
+            'url_link_clicks' => $clicks,
+            'url_link_clicks_per_100_impressions' => $impressions > 0 && $clicks !== null
+                ? round(100 * $clicks / $impressions, 2)
+                : null,
         ];
     }
 
@@ -253,7 +277,7 @@ Esempi di ritmo con segnaposto da sostituire con i dati del candidato: «Segnali
 
 Il ranking del feed Per te di X stima per ogni lettore la probabilità di azioni come risposte, repost e citazioni. Usa le interazioni osservate per orientare la scrittura e tieni distinti i tassi storici dalle previsioni di X. Apri il testo con il dettaglio più utile ricavabile da serie e titolo e usa una domanda specifica solo se offre uno spunto autentico.
 
-Quando x_post_metrics è available, confronta i tassi interactions_per_100_impressions per la stessa azione tra post di serie simili e misurati a distanza simile dalla pubblicazione, usando published_at e collected_at. Usa copy_format per scegliere una lunghezza, una struttura o l'uso di una domanda da provare. Nella motivazione collega la scelta ai tassi osservati e presentala come un'ipotesi. Se i confronti sono pochi o i tassi mancano, indica il limite e privilegia un testo chiaro e specifico. Tieni distinti i clic al sito dalle impressioni e dalle interazioni su X.
+Quando x_post_metrics è available, confronta interactions_per_100_impressions per la stessa azione tra post di serie simili e con età effettive simili (age_hours). Tieni separati i confronti a 24 ore e a 7 giorni e usa age_hours anche per le rilevazioni senza target_age_hours. Ogni post conta una volta per confronto: più rilevazioni dello stesso post non aumentano il campione. Considera a parte url_link_clicks_per_100_impressions per capire quali testi invitano ad aprire il link. I clic misurati su X e le sessioni GA4 descrivono azioni diverse. Un valore null indica un dato assente. Usa copy_format per scegliere una lunghezza, una struttura o l'uso di una domanda da provare. Nella motivazione indica quanti post sostengono il confronto e collega la scelta ai tassi osservati come ipotesi. Se i confronti sono pochi o i tassi mancano, indica il limite e privilegia un testo chiaro e specifico.
 PROMPT;
     }
 

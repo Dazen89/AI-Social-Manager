@@ -113,6 +113,31 @@
             @endif
         </section>
 
+        <section class="ui-panel mt-8 p-6 sm:p-8" aria-labelledby="x-metrics-heading">
+            <h2 id="x-metrics-heading" class="text-xl font-semibold">Come vengono usate le metriche di X</h2>
+            <dl class="mt-4 space-y-3 text-sm text-soft">
+                <div>
+                    <dt class="font-semibold text-ink">Quando raccogliamo i dati</dt>
+                    <dd>In produzione, con la pubblicazione su X abilitata, l’app controlla ogni sei ore i post pubblicati dal piano editoriale. Prova a salvare una rilevazione dopo circa 24 ore e una dopo 7 giorni. Legge da X impressioni, Mi piace, risposte, repost, citazioni e segnalibri. Se X li rende disponibili per l’account che ha pubblicato, salva anche i clic sul link.</dd>
+                </div>
+                <div>
+                    <dt class="font-semibold text-ink">Come li confrontiamo</dt>
+                    <dd>«Analizza ora» usa le rilevazioni già salvate per un massimo di 30 post di questo sito pubblicati negli ultimi 30 giorni. L’AI confronta post di serie simili misurati alla stessa distanza dalla pubblicazione e guarda quante interazioni o clic hanno ottenuto ogni 100 impressioni. Usa questi segnali per proporre formati di testo da provare.</dd>
+                </div>
+                <div>
+                    <dt class="font-semibold text-ink">Che cosa significano i clic</dt>
+                    <dd>X conta i clic sui link nel post. Google Analytics, se collegato, misura le sessioni sul sito. L’analisi tiene distinti i due conteggi e segnala quando i dati sono scarsi.</dd>
+                </div>
+            </dl>
+            @if ($cadence && data_get($cadence->source_snapshot, 'x_post_metrics.sample_size', 0) > 0)
+                <p class="mt-4 text-sm text-muted">Post X inclusi nell’ultima analisi: <strong>{{ data_get($cadence->source_snapshot, 'x_post_metrics.sample_size') }}</strong>.</p>
+            @elseif ($cadence)
+                <p class="mt-4 text-sm text-muted">Nessuna rilevazione X disponibile al momento dell’ultima analisi.</p>
+            @else
+                <p class="mt-4 text-sm text-muted">Il numero di post inclusi comparirà dopo la prima analisi.</p>
+            @endif
+        </section>
+
         @php($calendarParams = ['site' => $site, 'published' => $includePublished ? 1 : null])
         <section class="ui-panel mt-8 p-6 sm:p-8" aria-labelledby="calendar-heading">
             <div class="flex flex-wrap items-center justify-between gap-4">

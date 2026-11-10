@@ -9,6 +9,7 @@ use App\Models\EditorialSource;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\XConnection;
+use App\Services\XPostMetricsCollector;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -119,18 +120,25 @@ class EditorialWorkflowTest extends TestCase
 
         $previousCopy = "Nuovo capitolo.\nQuale leggere?";
         foreach ([
-            ['1', $previousCopy, now(), ['impression_count' => 200, 'reply_count' => 3, 'repost_count' => 5, 'like_count' => 0]],
-            ['2', 'Uscita disponibile.', now()->subHour(), ['reply_count' => 1]],
-        ] as [$id, $copy, $collectedAt, $metrics]) {
+            ['1', $previousCopy, 7, now(), 168, ['impression_count' => 200, 'reply_count' => 3, 'repost_count' => 5, 'like_count' => 0, 'url_link_clicks' => 12]],
+            ['2', 'Uscita disponibile.', 8, now()->subHour(), null, ['reply_count' => 1]],
+        ] as [$id, $copy, $daysOld, $collectedAt, $milestone, $metrics]) {
             $content = $this->content($site, $source, $id);
             $proposal = $site->editorialProposals()->create([
                 'editorial_content_id' => $content->id,
                 'status' => 'published',
                 'post_text' => $copy."\n\n".$content->public_url.'?campaign=editorial',
                 'rationale' => 'Uscita recente.',
-                'published_at' => now()->subDay(),
+                'published_at' => now()->subDays($daysOld),
             ]);
-            $proposal->metricSnapshots()->create(['metrics' => $metrics, 'collected_at' => $collectedAt]);
+            $proposal->metricSnapshots()->create(['metrics' => $metrics, 'collected_at' => $collectedAt, 'milestone_hours' => $milestone]);
+
+            if ($milestone !== null) {
+                $proposal->metricSnapshots()->create([
+                    'metrics' => ['impression_count' => 100, 'url_link_clicks' => 0],
+                    'collected_at' => now()->subDays(6), 'milestone_hours' => 24,
+                ]);
+            }
         }
 
         Http::preventStrayRequests();
@@ -150,16 +158,66 @@ class EditorialWorkflowTest extends TestCase
         $xMetrics = json_decode($payload, true, flags: JSON_THROW_ON_ERROR)['signals']['x_post_metrics'];
 
         $this->assertStringContainsString('ranking del feed Per te di X', $instructions);
-        $this->assertStringContainsString('confronta i tassi interactions_per_100_impressions', $instructions);
+        $this->assertStringContainsString('confronta interactions_per_100_impressions', $instructions);
         $this->assertStringNotContainsString('Quale leggere?', $payload);
         $this->assertStringNotContainsString('campaign=editorial', $payload);
         $this->assertSame('available', $xMetrics['status']);
         $this->assertSame(2, $xMetrics['sample_size']);
-        $this->assertSame(['reply_count' => 1.5, 'repost_count' => 2.5, 'like_count' => 0], $xMetrics['posts'][0]['interactions_per_100_impressions']);
+        $measurements = $xMetrics['posts'][0]['measurements'];
+        $this->assertSame([168, 24], array_column($measurements, 'target_age_hours'));
+        $this->assertSame(['reply_count' => 1.5, 'repost_count' => 2.5, 'like_count' => 0], $measurements[0]['interactions_per_100_impressions']);
+        $this->assertSame(6, $measurements[0]['url_link_clicks_per_100_impressions']);
+        $this->assertSame(0, $measurements[1]['url_link_clicks_per_100_impressions']);
         $this->assertSame(['characters' => mb_strlen($previousCopy), 'has_question' => true, 'has_line_break' => true], $xMetrics['posts'][0]['copy_format']);
-        $this->assertNull($xMetrics['posts'][1]['interactions_per_100_impressions']);
+        $this->assertNull($xMetrics['posts'][1]['measurements'][0]['interactions_per_100_impressions']);
+        $this->assertNull($xMetrics['posts'][1]['measurements'][0]['url_link_clicks']);
         $this->assertFalse($xMetrics['posts'][1]['copy_format']['has_question']);
         $this->assertSame('draft', $candidate->proposal()->sole()->status);
+        $this->get(route('sites.editorial-plan.show', $site))->assertOk()
+            ->assertSee('Come vengono usate le metriche di X')
+            ->assertSee('Post X inclusi nell’ultima analisi');
+    }
+
+    public function test_x_metrics_collect_more_than_ten_posts_in_one_batch_at_each_milestone(): void
+    {
+        $this->freezeTime();
+        $this->app->instance('env', 'production');
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
+        $source = $this->source($site);
+        XConnection::query()->create([
+            'authorized_by_user_id' => $admin->id, 'x_user_id' => '123', 'username' => 'publisher',
+            'display_name' => 'Publisher', 'access_token' => 'synthetic-token', 'token_expires_at' => now()->addDays(10),
+            'scopes' => ['tweet.read'], 'status' => 'active', 'manual_publishing_enabled' => true,
+        ]);
+
+        $posts = [];
+        foreach (range(1001, 1012) as $id) {
+            $content = $this->content($site, $source, (string) $id);
+            $site->editorialProposals()->create([
+                'editorial_content_id' => $content->id, 'status' => 'published',
+                'post_text' => 'Test', 'rationale' => 'Test', 'x_post_id' => (string) $id,
+                'published_at' => now(),
+            ]);
+            $posts[] = ['id' => (string) $id, 'public_metrics' => ['impression_count' => 100]];
+        }
+
+        Http::preventStrayRequests();
+        Http::fake(['https://api.x.com/2/tweets?*' => Http::response(['data' => $posts])]);
+        $collector = app(XPostMetricsCollector::class);
+
+        $this->assertSame(0, $collector->runDue());
+        $this->travel(24)->hours();
+        $this->assertSame(12, $collector->runDue());
+        $this->travel(6)->hours();
+        $this->assertSame(0, $collector->runDue());
+        $this->travel(138)->hours();
+        $this->assertSame(12, $collector->runDue());
+        $this->assertSame(0, $collector->runDue());
+        Http::assertSentCount(2);
+        $this->assertDatabaseCount('x_post_metric_snapshots', 24);
+        $this->assertDatabaseHas('x_post_metric_snapshots', ['milestone_hours' => 24]);
+        $this->assertDatabaseHas('x_post_metric_snapshots', ['milestone_hours' => 168]);
     }
 
     public function test_italian_confidence_is_normalized_and_schema_requests_canonical_values(): void

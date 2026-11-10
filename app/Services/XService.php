@@ -12,7 +12,9 @@ use Illuminate\Support\Facades\Http;
 
 class XService
 {
-    private const CREATE_POST_ENDPOINT = 'https://api.x.com/2/tweets';
+    private const POSTS_ENDPOINT = 'https://api.x.com/2/tweets';
+
+    public const POST_LOOKUP_LIMIT = 100;
 
     private const UPLOAD_MEDIA_ENDPOINT = 'https://api.x.com/2/media/upload';
 
@@ -231,7 +233,7 @@ class XService
 
         $response = Http::withToken($token)
             ->acceptJson()->timeout(15)
-            ->post(self::CREATE_POST_ENDPOINT, $payload);
+            ->post(self::POSTS_ENDPOINT, $payload);
 
         $status = $response->status();
         $reason = match ($status) {
@@ -257,20 +259,53 @@ class XService
         return $id;
     }
 
-    /** @return array<string, int> */
-    public function postPublicMetrics(XConnection $connection, string $postId): array
+    /**
+     * @param  list<string>  $postIds
+     * @return array<int|string, array<string, int>>
+     */
+    public function postMetrics(XConnection $connection, array $postIds): array
     {
-        $response = Http::withToken($this->validAccessToken($connection))
-            ->acceptJson()->timeout(15)
-            ->get(self::CREATE_POST_ENDPOINT.'/'.$postId, ['tweet.fields' => 'public_metrics']);
-        $metrics = $response->json('data.public_metrics');
+        $request = Http::withToken($this->validAccessToken($connection))->acceptJson()->timeout(15);
+        $params = ['ids' => implode(',', $postIds), 'tweet.fields' => 'public_metrics,non_public_metrics'];
+        $response = $request->get(self::POSTS_ENDPOINT, $params);
 
-        if ($response->failed() || ! is_array($metrics)) {
-            throw new XApiException('Le metriche del post X non sono disponibili.');
+        if (in_array($response->status(), [400, 403], true)) {
+            $params['tweet.fields'] = 'public_metrics';
+            $response = $request->get(self::POSTS_ENDPOINT, $params);
         }
 
+        if (! $response->successful()) {
+            throw new XApiException('Le metriche dei post X non sono disponibili.', $response->status());
+        }
+
+        $posts = $response->json('data');
+        $result = [];
+
+        foreach (is_array($posts) ? $posts : [] as $post) {
+            $id = data_get($post, 'id');
+
+            if (! is_string($id) || ! in_array($id, $postIds, true)) {
+                continue;
+            }
+
+            $metrics = data_get($post, 'public_metrics');
+            $metrics = is_array($metrics) ? $metrics : [];
+            $metrics['url_link_clicks'] = data_get($post, 'non_public_metrics.url_link_clicks');
+            $metrics = $this->normalizePostMetrics($metrics);
+
+            if ($metrics !== []) {
+                $result[$id] = $metrics;
+            }
+        }
+
+        return $result;
+    }
+
+    /** @return array<string, int> */
+    private function normalizePostMetrics(array $metrics): array
+    {
         $metrics['repost_count'] = $metrics['retweet_count'] ?? $metrics['repost_count'] ?? null;
-        $allowed = ['impression_count', 'like_count', 'reply_count', 'repost_count', 'quote_count', 'bookmark_count'];
+        $allowed = ['impression_count', 'like_count', 'reply_count', 'repost_count', 'quote_count', 'bookmark_count', 'url_link_clicks'];
         $result = [];
 
         foreach ($allowed as $field) {
