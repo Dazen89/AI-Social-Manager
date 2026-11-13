@@ -152,6 +152,7 @@ class EditorialProposalService
             ->whereIn('eligibility_status', ['pending', 'eligible'])
             ->whereHas('source', fn ($query) => $query->where('is_active', true)->where('verification_status', 'verified'))
             ->whereDoesntHave('proposal', fn ($query) => $query->whereNotIn('status', ['draft', 'deferred'])->orWhere('manual_override', true))
+            ->whereDoesntHave('proposal', fn ($query) => $query->where('proposed_for', '<=', now()))
             ->with(['source', 'proposal'])
             ->orderByDesc('released_at')
             ->orderByDesc('id')

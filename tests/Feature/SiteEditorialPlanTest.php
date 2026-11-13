@@ -15,6 +15,29 @@ class SiteEditorialPlanTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_overdue_proposals_remain_in_the_calendar_even_when_the_source_is_disabled(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-13 12:00:00', 'UTC'));
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
+        $source = $site->editorialSources()->create([
+            'provider' => 'foolslide', 'name' => 'Archivio', 'base_url' => $site->base_url, 'is_active' => false,
+        ]);
+        $content = $source->contents()->create([
+            'site_id' => $site->id, 'external_id' => 'past', 'series_title' => 'Serie passata',
+            'title' => 'Capitolo passato', 'public_url' => $site->base_url.'/chapter/past', 'last_seen_at' => now(),
+        ]);
+        $proposal = $site->editorialProposals()->create([
+            'editorial_content_id' => $content->id, 'status' => 'draft', 'post_text' => 'Bozza passata',
+            'rationale' => 'Da controllare.', 'proposed_for' => now()->subDays(5),
+            'delivery_error' => 'Errore precedente conservato.',
+        ]);
+
+        $this->actingAs($admin)->get(route('sites.editorial-plan.show', $site))->assertOk()
+            ->assertSee('Data prevista superata')->assertSee('Errore precedente conservato.')
+            ->assertViewHas('calendarProposals', fn ($calendar) => $calendar->flatten()->contains('id', $proposal->id));
+    }
+
     public function test_source_promotion_requires_explicit_admin_authorization_and_can_be_revoked(): void
     {
         $admin = User::factory()->administrator()->create();
@@ -375,7 +398,7 @@ class SiteEditorialPlanTest extends TestCase
                 'status' => $status,
                 'post_text' => 'Leggi il capitolo '.$url,
                 'rationale' => 'Proposta di prova.',
-                'proposed_for' => now(),
+                'proposed_for' => now()->addDay(),
             ]);
         }
 

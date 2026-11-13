@@ -172,11 +172,15 @@
                                             <time datetime="{{ $date }}" class="inline-flex size-8 items-center justify-center rounded-full text-sm {{ $date === $today ? 'bg-accent font-bold text-white' : 'text-soft' }}">{{ $day }}</time>
                                             @foreach ($calendarProposals->get($date, collect()) as $proposal)
                                                 @php($calendarPostPublished = $proposal->status === 'published')
+                                                @php($calendarPostOverdue = in_array($proposal->status, ['draft', 'approved', 'deferred'], true) && $proposal->proposed_for?->isPast())
                                                 @php($calendarPostParams = ['site' => $site, 'month' => $month->format('Y-m'), 'published' => $includePublished || $calendarPostPublished ? 1 : null, 'proposal' => $proposal->id])
                                                 @php($calendarPostUrl = $proposals->contains('id', $proposal->id) ? '' : route('sites.editorial-plan.show', $calendarPostParams))
-                                                <a href="{{ $calendarPostUrl }}#proposal-{{ $proposal->id }}" class="mt-1 block rounded-lg px-2 py-1 text-xs no-underline {{ $calendarPostPublished ? 'ui-tone-success' : 'bg-accent-soft text-accent-ink' }}">
+                                                <a href="{{ $calendarPostUrl }}#proposal-{{ $proposal->id }}" class="mt-1 block rounded-lg px-2 py-1 text-xs no-underline {{ $calendarPostPublished ? 'ui-tone-success' : ($calendarPostOverdue ? 'ui-tone-warning' : 'bg-accent-soft text-accent-ink') }}">
                                                     <span class="font-semibold">{{ ($proposal->published_at ?? $proposal->proposed_for)->setTimezone($timezone)->format('H:i') }} · {{ $proposal->content->series_title }}</span>
-                                                    <span class="block">{{ match ($proposal->status) { 'approved' => 'Approvata', 'published' => 'Pubblicata su X', 'delivery_uncertain' => 'Esito X da verificare', default => 'Bozza' } }}</span>
+                                                    <span class="block">{{ match ($proposal->status) { 'approved' => 'Approvata', 'published' => 'Pubblicata su X', 'delivery_uncertain' => 'Esito X da verificare', 'delivering' => 'Invio in corso', 'deferred' => 'Rinviata', 'rejected' => 'Rifiutata', default => 'Bozza' } }}</span>
+                                                    @if ($calendarPostOverdue)
+                                                        <span class="block font-semibold">Data prevista superata</span>
+                                                    @endif
                                                     <span class="mt-1 block text-soft">{{ \Illuminate\Support\Str::limit($proposal->rationale, 100) }}</span>
                                                 </a>
                                             @endforeach
@@ -190,6 +194,53 @@
             </div>
             @if ($calendarProposals->isEmpty())
                 <p class="mt-5 text-sm text-muted">Nessun post proposto in questo mese. Usa “Analizza ora” per rivalutare i capitoli disponibili oppure consulta un altro mese.</p>
+            @endif
+        </section>
+
+        <section id="publication-log" class="ui-panel mt-8 p-6 sm:p-8" aria-labelledby="publication-log-heading">
+            <h2 id="publication-log-heading" class="text-xl font-semibold">Registro pubblicazioni X</h2>
+            <p class="mt-2 text-sm text-muted">Ogni tentativo mostra la modalità di invio e l’esito. Se una proposta è ancora in bozza, controlla l’approvazione, l’autorizzazione della fonte e le impostazioni automatiche. Gli invii programmati dipendono dalle attività pianificate del server.</p>
+            <div class="mt-5 divide-y divide-line">
+                @forelse ($publicationAttempts as $attempt)
+                    <article class="py-4">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <time class="text-sm text-muted">{{ $attempt->started_at->setTimezone($timezone)->format('d/m/Y H:i:s') }}</time>
+                            <span class="ui-badge">{{ $attempt->automatic ? 'Automatico' : 'Manuale' }}</span>
+                            <span class="ui-badge {{ $attempt->outcome === 'published' ? 'ui-tone-success' : 'ui-tone-warning' }}">{{ match ($attempt->outcome) { 'published' => 'Pubblicata su X', 'failed' => 'Invio non riuscito', 'uncertain' => 'Esito da verificare', default => 'Tentativo avviato' } }}</span>
+                        </div>
+                        <p class="mt-2 text-sm font-semibold">{{ $attempt->proposal->content->series_title }} · {{ $attempt->proposal->content->title }}</p>
+                        @if ($attempt->message)
+                            <p class="mt-2 text-sm text-soft">{{ $attempt->message }}</p>
+                        @elseif ($attempt->outcome === 'uncertain')
+                            <p class="mt-2 text-sm text-soft">Verifica il profilo X prima di intervenire sulla proposta.</p>
+                        @endif
+                        <div class="mt-2 flex flex-wrap gap-4 text-sm">
+                            <a class="text-accent-ink" href="{{ route('sites.editorial-plan.show', ['site' => $site, 'published' => 1, 'proposal' => $attempt->editorial_proposal_id]) }}#proposal-{{ $attempt->editorial_proposal_id }}">Apri proposta #{{ $attempt->editorial_proposal_id }}</a>
+                            @if ($attempt->x_post_id && preg_match('/^\d+$/D', $attempt->x_post_id))
+                                <a class="text-accent-ink" href="https://x.com/i/status/{{ $attempt->x_post_id }}" target="_blank" rel="noopener noreferrer">Apri post su X ↗</a>
+                            @endif
+                        </div>
+                    </article>
+                @empty
+                    <p class="py-4 text-sm text-muted">Nessun tentativo registrato dopo l’attivazione del registro.</p>
+                @endforelse
+            </div>
+            {{ $publicationAttempts->links() }}
+            @if ($previousDeliveries->isNotEmpty())
+                <details class="mt-4">
+                    <summary class="cursor-pointer text-sm font-semibold text-accent-ink">Esiti precedenti all’attivazione del registro</summary>
+                    <p class="mt-2 text-xs text-muted">Ultimo stato conservato per ciascuna proposta. Le date indicano la pubblicazione o l’ultimo tentativo disponibile.</p>
+                    @foreach ($previousDeliveries as $previous)
+                        <article class="border-t border-line py-3 text-sm">
+                            <p class="font-semibold">{{ $previous->content->series_title }} · {{ $previous->content->title }}</p>
+                            <p class="mt-1 text-muted">{{ ($previous->published_at ?? $previous->delivery_attempted_at)?->setTimezone($timezone)->format('d/m/Y H:i') ?? 'Data del tentativo non disponibile' }} · {{ $previous->status === 'published' ? 'Pubblicata su X' : ($previous->status === 'delivery_uncertain' ? 'Esito da verificare' : 'Invio non completato') }}</p>
+                            @if ($previous->delivery_error)
+                                <p class="mt-1 text-soft">{{ $previous->delivery_error }}</p>
+                            @endif
+                            <a class="mt-1 inline-block text-accent-ink" href="{{ route('sites.editorial-plan.show', ['site' => $site, 'published' => 1, 'proposal' => $previous->id]) }}#proposal-{{ $previous->id }}">Apri proposta #{{ $previous->id }}</a>
+                        </article>
+                    @endforeach
+                </details>
             @endif
         </section>
 

@@ -47,4 +47,9 @@ class EditorialProposal extends Model
     {
         return $this->hasMany(XPostMetricSnapshot::class);
     }
+
+    public function publicationAttempts(): HasMany
+    {
+        return $this->hasMany(XPublicationAttempt::class);
+    }
 }

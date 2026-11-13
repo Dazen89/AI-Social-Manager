@@ -154,6 +154,31 @@ class XPostPublisher
 
     private function deliver(EditorialProposal $proposal, XConnection $connection, bool $automatic): bool
     {
+        $attempt = $proposal->publicationAttempts()->create([
+            'automatic' => $automatic,
+            'outcome' => 'started',
+            'started_at' => now(),
+        ]);
+
+        try {
+            return $this->performDelivery($proposal, $connection, $automatic);
+        } finally {
+            $proposal->refresh();
+            $attempt->update([
+                'outcome' => match ($proposal->status) {
+                    'published' => 'published',
+                    'delivery_uncertain', 'delivering' => 'uncertain',
+                    default => 'failed',
+                },
+                'finished_at' => now(),
+                'x_post_id' => $proposal->x_post_id,
+                'message' => $proposal->delivery_error,
+            ]);
+        }
+    }
+
+    private function performDelivery(EditorialProposal $proposal, XConnection $connection, bool $automatic): bool
+    {
         if (! $this->canDeliver($proposal, $automatic)) {
             $this->returnToDraft($proposal, 'Pubblicazione bloccata. Verifica fonte, idoneità, URL e approvazione.');
 

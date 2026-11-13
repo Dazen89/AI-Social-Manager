@@ -42,6 +42,17 @@ class EditorialAutoPublishTest extends TestCase
         $this->assertSame('published', $proposal->status);
         $this->assertSame('post-123', $proposal->x_post_id);
         $this->assertNotNull($proposal->published_at);
+        $attempt = $proposal->publicationAttempts()->sole();
+        $this->assertTrue($attempt->automatic);
+        $this->assertSame('published', $attempt->outcome);
+        $this->assertSame('post-123', $attempt->x_post_id);
+        $this->assertNotNull($attempt->finished_at);
+        $this->actingAs(User::query()->sole())->get(route('sites.editorial-plan.show', $proposal->site))
+            ->assertOk()->assertSee('Registro pubblicazioni X')->assertSee('Automatico')
+            ->assertViewHas('publicationAttempts', fn ($attempts) => $attempts->total() === 1 && $attempts->first()->id === $attempt->id);
+        $anotherSite = Site::factory()->create();
+        $this->get(route('sites.editorial-plan.show', $anotherSite))->assertOk()
+            ->assertViewHas('publicationAttempts', fn ($attempts) => $attempts->total() === 0);
         Http::assertSentCount(1);
         Http::assertSent(fn ($request): bool => $request->url() === 'https://api.x.com/2/tweets'
             && $request['text'] === $proposal->post_text);
@@ -80,6 +91,9 @@ class EditorialAutoPublishTest extends TestCase
 
         $this->assertSame('delivery_uncertain', $proposal->fresh()->status);
         $this->assertStringContainsString('HTTP 503', $proposal->fresh()->delivery_error);
+        $attempt = $proposal->publicationAttempts()->sole();
+        $this->assertSame('uncertain', $attempt->outcome);
+        $this->assertStringContainsString('HTTP 503', $attempt->message);
         Http::assertSentCount(1);
     }
 
@@ -98,6 +112,10 @@ class EditorialAutoPublishTest extends TestCase
 
         $proposal->refresh();
         $this->assertSame('draft', $proposal->status);
+        $attempt = $proposal->publicationAttempts()->sole();
+        $this->assertFalse($attempt->automatic);
+        $this->assertSame('failed', $attempt->outcome);
+        $this->assertStringContainsString('HTTP 403', $attempt->message);
         $this->assertNull($proposal->delivery_attempted_at);
         $this->assertNull($proposal->x_post_id);
         $this->assertStringContainsString('HTTP 403', $proposal->delivery_error);

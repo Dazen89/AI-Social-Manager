@@ -118,6 +118,14 @@ class EditorialWorkflowTest extends TestCase
         $candidate = $this->content($site, $source, '3');
         $this->ai($admin);
 
+        $overdueContent = $this->content($site, $source, 'overdue');
+        $overdue = $site->editorialProposals()->create([
+            'editorial_content_id' => $overdueContent->id, 'status' => 'draft',
+            'post_text' => 'Bozza scaduta conservata.', 'rationale' => 'Da controllare.',
+            'proposed_for' => now()->subDay(),
+        ]);
+        $overdueDate = $overdue->proposed_for->toIso8601String();
+
         $previousCopy = "Nuovo capitolo.\nQuale leggere?";
         foreach ([
             ['1', $previousCopy, 7, now(), 168, ['impression_count' => 200, 'reply_count' => 3, 'repost_count' => 5, 'like_count' => 0, 'url_link_clicks' => 12]],
@@ -173,6 +181,8 @@ class EditorialWorkflowTest extends TestCase
         $this->assertNull($xMetrics['posts'][1]['measurements'][0]['url_link_clicks']);
         $this->assertFalse($xMetrics['posts'][1]['copy_format']['has_question']);
         $this->assertSame('draft', $candidate->proposal()->sole()->status);
+        $this->assertSame($overdueDate, $overdue->fresh()->proposed_for->toIso8601String());
+        $this->assertSame('Bozza scaduta conservata.', $overdue->fresh()->post_text);
         $this->get(route('sites.editorial-plan.show', $site))->assertOk()
             ->assertSee('Come vengono usate le metriche di X')
             ->assertSee('Post X inclusi nell’ultima analisi');

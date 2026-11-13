@@ -8,6 +8,7 @@ use App\Models\EditorialProposal;
 use App\Models\EditorialSource;
 use App\Models\Site;
 use App\Models\XConnection;
+use App\Models\XPublicationAttempt;
 use App\Services\FoOlSlideSourceVerifier;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
@@ -45,6 +46,7 @@ class SiteEditorialPlanController extends Controller
         $visibleProposals = $site->editorialProposals()->with('content.source')
             ->where(fn ($query) => $query
                 ->whereHas('content.source', fn ($source) => $source->where('is_active', true))
+                ->orWhere('proposed_for', '<=', now())
                 ->orWhereIn('status', ['published', 'delivery_uncertain', 'delivering', 'rejected']));
         $monthRange = [$month->startOfMonth()->setTimezone('UTC'), $month->endOfMonth()->setTimezone('UTC')];
 
@@ -65,6 +67,15 @@ class SiteEditorialPlanController extends Controller
                 ->whereDoesntHave('proposal')->count(),
             'aiReady' => AiIntegration::query()->where('active_marker', 'active')->where('status', 'verified')->exists(),
             'includePublished' => $includePublished,
+            'publicationAttempts' => XPublicationAttempt::query()
+                ->whereHas('proposal', fn ($query) => $query->where('site_id', $site->id))
+                ->with('proposal.content')->orderByDesc('started_at')->orderByDesc('id')
+                ->paginate(10, ['*'], 'deliveries')->withQueryString()->fragment('publication-log'),
+            'previousDeliveries' => $site->editorialProposals()->with('content')
+                ->whereDoesntHave('publicationAttempts')
+                ->where(fn ($query) => $query->whereNotNull('delivery_attempted_at')
+                    ->orWhereNotNull('delivery_error')->orWhereNotNull('published_at'))
+                ->orderByDesc('updated_at')->limit(10)->get(),
             'proposals' => (clone $visibleProposals)
                 ->when(! $includePublished, fn ($query) => $query->where('status', '!=', 'published'))
                 ->when($focusedProposal > 0, fn ($query) => $query->orderByRaw('CASE WHEN id = ? THEN 0 ELSE 1 END', [$focusedProposal]))
@@ -72,7 +83,7 @@ class SiteEditorialPlanController extends Controller
                 ->orderByRaw("CASE WHEN {$proposalDate} >= ? THEN {$proposalDate} END ASC", [$todayUtc])
                 ->orderByRaw("{$proposalDate} DESC")
                 ->orderByDesc('id')->paginate(50, ['*'], 'proposals')->withQueryString()->fragment('proposals'),
-            'calendarProposals' => $visibleProposals->whereIn('status', ['draft', 'approved', 'published', 'delivery_uncertain'])
+            'calendarProposals' => $visibleProposals->whereIn('status', ['draft', 'approved', 'published', 'delivery_uncertain', 'delivering', 'deferred', 'rejected'])
                 ->where(fn ($query) => $query->whereBetween('published_at', $monthRange)
                     ->orWhere(fn ($planned) => $planned->whereNull('published_at')->whereBetween('proposed_for', $monthRange)))
                 ->get()->groupBy(fn ($proposal) => ($proposal->published_at ?? $proposal->proposed_for)->setTimezone($timezone)->format('Y-m-d')),
