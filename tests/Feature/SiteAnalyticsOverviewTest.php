@@ -100,6 +100,140 @@ class SiteAnalyticsOverviewTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    #[\PHPUnit\Framework\Attributes\DataProvider('connectionFailures')]
+    public function test_connection_errors_are_classified_without_exposing_raw_details(int $errno, string $kind, string $label): void
+    {
+        $this->freezeTime();
+        Http::preventStrayRequests();
+        $calls = 0;
+        Http::fake(function ($request, $options) use ($errno, &$calls) {
+            $calls++;
+            $this->assertSame(20, $options['timeout']);
+            return Http::failedConnection("cURL error {$errno}: synthetic-private-address synthetic-token")($request);
+        });
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
+        $this->connectAnalytics($admin, $site);
+
+        $this->actingAs($admin)->get(route('sites.show', $site))->assertOk()
+            ->assertSee($label)->assertSee('durante la lettura dei report')
+            ->assertDontSee('synthetic-private-address')->assertDontSee('synthetic-token')
+            ->assertViewHas('analyticsQuota', fn ($diagnostics) =>
+                $diagnostics['request_error']['type'] === $kind
+                && $diagnostics['request_error']['http_status'] === null
+                && $diagnostics['request_error']['phase'] === 'reports');
+        $this->get(route('sites.show', $site))->assertOk()->assertSee($label);
+        $this->assertSame(1, $calls);
+        $diagnostics = app(\App\Services\GoogleAnalyticsReportService::class)->quotaDiagnostics($site->googleAnalyticsProperty);
+        $this->assertStringNotContainsString('synthetic-token', json_encode($diagnostics));
+        $this->travel(6)->minutes();
+        $this->get(route('sites.show', $site))->assertOk();
+        $this->assertSame(2, $calls);
+    }
+
+    public static function connectionFailures(): array
+    {
+        return [
+            'timeout' => [28, 'timeout', 'Timeout nella comunicazione'],
+            'dns' => [6, 'network', 'Errore DNS'],
+            'tls' => [60, 'network', 'Errore TLS'],
+            'unknown' => [0, 'network', 'Errore di rete'],
+        ];
+    }
+
+    public function test_network_failure_during_token_refresh_is_distinguished_from_report_reading(): void
+    {
+        Http::preventStrayRequests();
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
+        $this->connectAnalytics($admin, $site);
+        $this->mock(\App\Services\GoogleAnalyticsService::class)
+            ->shouldReceive('validAccessToken')->once()
+            ->andThrow(new \Illuminate\Http\Client\ConnectionException('cURL error 28: synthetic-private-address'));
+
+        $this->actingAs($admin)->get(route('sites.show', $site))->assertOk()
+            ->assertSee('durante il rinnovo dell’autorizzazione')
+            ->assertDontSee('synthetic-private-address')
+            ->assertViewHas('analyticsQuota', fn ($diagnostics) =>
+                $diagnostics['request_error']['type'] === 'timeout'
+                && $diagnostics['request_error']['phase'] === 'authorization');
+        Http::assertNothingSent();
+    }
+
+    public function test_server_error_keeps_http_status_and_recovers_after_the_pause(): void
+    {
+        $this->freezeTime();
+        Http::preventStrayRequests();
+        Http::fakeSequence()->push(['error' => ['message' => 'synthetic-private-message']], 503)
+            ->push($this->reportPayload());
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
+        $this->connectAnalytics($admin, $site);
+        $this->actingAs($admin)->get(route('sites.show', $site))->assertOk()
+            ->assertSee('HTTP 503')->assertSee('Errore del servizio Google')
+            ->assertDontSee('synthetic-private-message')
+            ->assertViewHas('analyticsQuota', fn ($diagnostics) => $diagnostics['request_error']['http_status'] === 503);
+        $this->get(route('sites.show', $site))->assertOk()->assertSee('HTTP 503');
+        Http::assertSentCount(1);
+        $this->travel(6)->minutes();
+        $this->get(route('sites.show', $site))->assertOk()->assertDontSee('Ultimo problema di lettura');
+        Http::assertSentCount(2);
+    }
+
+    public function test_consecutive_errors_increase_the_shared_pause_and_success_resets_it(): void
+    {
+        $this->freezeTime();
+        Http::preventStrayRequests();
+        Http::fakeSequence()->push([], 503)->push([], 500)->push([], 503)->push([], 503)
+            ->push($this->reportPayload())->push([], 503);
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
+        $this->connectAnalytics($admin, $site);
+        GoogleAnalyticsConnection::query()->update(['token_expires_at' => now()->addDays(2)]);
+        $this->actingAs($admin);
+
+        foreach ([5, 15, 30, 60] as $index => $delay) {
+            $this->get(route('sites.show', $site))->assertOk()
+                ->assertSee("Nuove letture sospese per {$delay} minuti.")
+                ->assertViewHas('analyticsQuota', fn ($diagnostics) =>
+                    $diagnostics['request_error']['retry_at'] === now()->addMinutes($delay)->toIso8601String());
+            $this->get(route('sites.show', ['site' => $site, 'range' => 90]))->assertOk();
+            Http::assertSentCount($index + 1);
+            $this->travel($delay + 1)->minutes();
+        }
+
+        $this->get(route('sites.show', $site))->assertOk()->assertDontSee('Ultimo problema di lettura');
+        $this->travel(11)->minutes();
+        $this->get(route('sites.show', $site))->assertOk()->assertSee('Nuove letture sospese per 5 minuti.');
+        Http::assertSentCount(6);
+    }
+
+    public function test_low_quota_pauses_other_ranges_and_keeps_the_last_successful_report(): void
+    {
+        $this->freezeTime();
+        Http::preventStrayRequests();
+        $payload = $this->reportPayload();
+        $payload['reports'][0]['propertyQuota'] = [
+            'tokensPerProjectPerHour' => ['remaining' => 50],
+        ];
+        Http::fakeSequence()->push($payload)->push($this->reportPayload());
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
+        $this->connectAnalytics($admin, $site);
+        GoogleAnalyticsConnection::query()->update(['token_expires_at' => now()->addDays(2)]);
+
+        $this->actingAs($admin)->get(route('sites.show', $site))->assertOk()
+            ->assertSee('Pausa preventiva per quota residua bassa')->assertSee('Panoramica del traffico');
+        $this->get(route('sites.show', ['site' => $site, 'range' => 90]))->assertOk()
+            ->assertSee('Aggiornamento sospeso per un’ora');
+        $this->travel(11)->minutes();
+        $this->get(route('sites.show', $site))->assertOk()->assertSee('Visualizzi l’ultimo report disponibile');
+        Http::assertSentCount(1);
+        $this->travel(50)->minutes();
+        $this->get(route('sites.show', $site))->assertOk()->assertDontSee('Pausa preventiva per quota residua bassa');
+        Http::assertSentCount(2);
+    }
+
     public function test_quota_panel_uses_reported_balances_and_does_not_make_extra_requests(): void
     {
         $payload = $this->reportPayload();

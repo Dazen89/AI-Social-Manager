@@ -6,15 +6,22 @@ use App\Exceptions\GoogleAnalyticsReportException;
 use App\Models\GoogleAnalyticsProperty;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
-use Throwable;
 
 class GoogleAnalyticsReportService
 {
     private const DATA_API_ENDPOINT = 'https://analyticsdata.googleapis.com/v1beta';
+
+    private const FAILURE_DELAYS_MINUTES = [5, 15, 30, 60];
+
+    private const QUOTA_SAFETY_THRESHOLDS = [
+        'tokensPerDay' => 100,
+        'tokensPerHour' => 100,
+        'tokensPerProjectPerHour' => 100,
+        'serverErrorsPerProjectPerHour' => 2,
+    ];
 
     private const QUOTA_LABELS = [
         'tokensPerDay' => 'Token giornalieri della proprietà',
@@ -49,7 +56,8 @@ class GoogleAnalyticsReportService
         }
 
         $diagnostics = $this->quotaDiagnostics($property);
-        unset($diagnostics['error']);
+        unset($diagnostics['error'], $diagnostics['request_error'], $diagnostics['quota_pause']);
+        Cache::forget($this->cooldownKey($property).'.failures');
 
         if ($remaining !== []) {
             $diagnostics['measured_at'] = now()->toIso8601String();
@@ -60,11 +68,23 @@ class GoogleAnalyticsReportService
             }
         }
 
+        foreach (self::QUOTA_SAFETY_THRESHOLDS as $field => $threshold) {
+            if (isset($remaining[$field]) && $remaining[$field] <= $threshold) {
+                $message = 'Aggiornamento sospeso per un’ora per proteggere la quota Google Analytics: '.self::QUOTA_LABELS[$field].'.';
+                $diagnostics['quota_pause'] = [
+                    'message' => $message,
+                    'retry_at' => now()->addHour()->toIso8601String(),
+                ];
+                Cache::put($this->cooldownKey($property), $message, now()->addHour());
+                break;
+            }
+        }
+
         Cache::put($this->cooldownKey($property).'.diagnostics', $diagnostics, now()->addDay());
     }
 
     /** @param array<string, mixed> $payload */
-    private function recordQuotaError(GoogleAnalyticsProperty $property, array $payload): void
+    private function recordQuotaError(GoogleAnalyticsProperty $property, array $payload, int $delayMinutes): void
     {
         // Classify known quota descriptions without persisting provider messages or metadata.
         $description = strtolower(json_encode($payload) ?: '');
@@ -97,11 +117,12 @@ class GoogleAnalyticsReportService
         }
 
         $diagnostics = $this->quotaDiagnostics($property);
+        unset($diagnostics['request_error']);
         $diagnostics['error'] = [
             'http_status' => 429,
             'quota_label' => $label,
             'occurred_at' => now()->toIso8601String(),
-            'retry_at' => now()->addMinutes(15)->toIso8601String(),
+            'retry_at' => now()->addMinutes($delayMinutes)->toIso8601String(),
         ];
         Cache::put($this->cooldownKey($property).'.diagnostics', $diagnostics, now()->addDay());
     }
@@ -140,6 +161,40 @@ class GoogleAnalyticsReportService
         return $this->cachedReport($property, $cacheKey, true, function () use ($property, $host, $days): array {
             return $this->requestOverview($property, $host, $days);
         });
+    }
+
+    private function nextFailureDelay(GoogleAnalyticsProperty $property): int
+    {
+        $key = $this->cooldownKey($property).'.failures';
+        $failures = min((int) Cache::get($key, 0) + 1, count(self::FAILURE_DELAYS_MINUTES));
+        Cache::put($key, $failures, now()->addDay());
+
+        return self::FAILURE_DELAYS_MINUTES[$failures - 1];
+    }
+
+    private function recordRequestError(GoogleAnalyticsProperty $property, string $type, string $message, ?int $status = null, ?string $phase = null): string
+    {
+        $retryAt = null;
+
+        if ($type !== 'http') {
+            $delay = $this->nextFailureDelay($property);
+            $retryAt = now()->addMinutes($delay);
+            $message .= " Nuove letture sospese per {$delay} minuti.";
+            Cache::put($this->cooldownKey($property), $message, $retryAt);
+        }
+
+        $diagnostics = $this->quotaDiagnostics($property);
+        $diagnostics['request_error'] = [
+            'type' => $type,
+            'message' => $message,
+            'http_status' => $status,
+            'phase' => $phase,
+            'occurred_at' => now()->toIso8601String(),
+            'retry_at' => $retryAt?->toIso8601String(),
+        ];
+        Cache::put($this->cooldownKey($property).'.diagnostics', $diagnostics, now()->addDay());
+
+        return $message;
     }
 
     /**
@@ -394,20 +449,34 @@ class GoogleAnalyticsReportService
     {
         $url = self::DATA_API_ENDPOINT.'/properties/'.$property->property_id.':batchRunReports';
         $requests = array_map(fn (array $request): array => $request + ['returnPropertyQuota' => true], $requests);
+        $phase = 'authorization';
 
         try {
+            $token = $this->analytics->validAccessToken($property->connection);
+            $phase = 'reports';
             $response = Http::acceptJson()
-                ->withToken($this->analytics->validAccessToken($property->connection))
-                ->connectTimeout(3)
-                ->timeout(8)
-                ->retry(2, 250, function (Throwable $exception): bool {
-                    return $exception instanceof ConnectionException
-                        || ($exception instanceof RequestException && $exception->response->serverError());
-                }, throw: false)
+                ->withToken($token)
+                ->connectTimeout(5)
+                ->timeout(20)
                 ->post($url, ['requests' => $requests]);
-        } catch (ConnectionException) {
-            $message = 'Google Analytics non è raggiungibile in questo momento. Il prossimo tentativo sarà possibile tra un minuto.';
-            Cache::put($this->cooldownKey($property), $message, now()->addMinute());
+        } catch (ConnectionException $exception) {
+            $errno = 0;
+
+            // Read only the numeric error code. URLs and raw exception messages stay out of diagnostics.
+            if (preg_match('/cURL error (\d+):/i', $exception->getMessage(), $match)) {
+                $errno = (int) $match[1];
+            }
+
+            $type = $errno === 28 ? 'timeout' : 'network';
+            $reason = match ($errno) {
+                28 => 'Timeout nella comunicazione con Google.',
+                6 => 'Errore DNS. Il server non è riuscito a risolvere l’indirizzo di Google.',
+                7 => 'Connessione a Google non riuscita.',
+                35, 60 => 'Errore TLS nella connessione sicura con Google.',
+                default => 'Errore di rete nella comunicazione con Google.',
+            };
+            $stage = $phase === 'authorization' ? 'Il problema si è verificato durante il rinnovo dell’autorizzazione.' : 'Il problema si è verificato durante la lettura dei report.';
+            $message = $this->recordRequestError($property, $type, $reason.' '.$stage, phase: $phase);
             throw new GoogleAnalyticsReportException($message);
         }
 
@@ -418,7 +487,9 @@ class GoogleAnalyticsReportService
         $payload = $response->json();
 
         if (! is_array($payload) || ! is_array($payload['reports'] ?? null)) {
-            throw new GoogleAnalyticsReportException('Google Analytics ha restituito una risposta dati non valida. Riprova più tardi.');
+            $message = 'Google Analytics ha restituito una risposta dati non valida. Riprova più tardi.';
+            $message = $this->recordRequestError($property, 'invalid_response', $message, $response->status(), 'reports');
+            throw new GoogleAnalyticsReportException($message);
         }
 
         $reports = array_values($payload['reports']);
@@ -499,6 +570,16 @@ class GoogleAnalyticsReportService
     private function throwReportException(GoogleAnalyticsProperty $property, int $status, array $payload): never
     {
         $encodedPayload = json_encode($payload) ?: '';
+        if ($status !== 429) {
+            $message = match ($status) {
+                401 => 'Google ha rifiutato l’autorizzazione salvata.',
+                403 => 'Google ha negato l’accesso ai report. Verifica permessi e attivazione della Data API.',
+                500 => 'Google Analytics ha restituito un errore interno del servizio (HTTP 500).',
+                503 => 'Il servizio Google Analytics è temporaneamente indisponibile (HTTP 503).',
+                default => "Google Analytics ha restituito un errore HTTP {$status}.",
+            };
+            $message = $this->recordRequestError($property, $status >= 500 ? 'server' : 'http', $message, $status, 'reports');
+        }
 
         if ($status === 403 && (str_contains($encodedPayload, 'analyticsdata.googleapis.com') || str_contains($encodedPayload, 'SERVICE_DISABLED'))) {
             throw new GoogleAnalyticsReportException(
@@ -522,14 +603,15 @@ class GoogleAnalyticsReportService
         }
 
         if ($status === 429) {
-            $this->recordQuotaError($property, $payload);
-            $message = 'Google Analytics ha temporaneamente esaurito la quota di richieste. L’app sospende le nuove letture per 15 minuti, poi riprova alla prossima richiesta.';
-            Cache::put($this->cooldownKey($property), $message, now()->addMinutes(15));
+            $delay = max(15, $this->nextFailureDelay($property));
+            $this->recordQuotaError($property, $payload, $delay);
+            $message = "Google Analytics ha temporaneamente esaurito la quota di richieste. L’app sospende le nuove letture per {$delay} minuti, poi riprova alla prossima richiesta.";
+            Cache::put($this->cooldownKey($property), $message, now()->addMinutes($delay));
             throw new GoogleAnalyticsReportException($message);
         }
 
         if ($status >= 500) {
-            Cache::put($this->cooldownKey($property), 'Google Analytics è temporaneamente indisponibile. Riprova tra un minuto.', now()->addMinute());
+            throw new GoogleAnalyticsReportException($message);
         }
 
         throw new GoogleAnalyticsReportException('Google Analytics non ha restituito i dati richiesti. Riprova più tardi; se il problema continua, controlla la configurazione della proprietà.');

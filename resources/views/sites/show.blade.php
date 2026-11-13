@@ -90,6 +90,26 @@
                         <p class="mt-2 text-xs">Il ripristino della quota dipende da Google. Le quote residue eventualmente mostrate sopra appartengono all’ultima lettura riuscita.</p>
                     </div>
                 @endif
+                @if (! empty($analyticsQuota['request_error']))
+                    <div class="ui-alert ui-tone-warning mt-4">
+                        <p class="font-semibold">Ultimo problema di lettura · {{ match ($analyticsQuota['request_error']['type']) { 'timeout' => 'Timeout', 'network' => 'Errore di rete', 'server' => 'Errore del servizio Google', 'invalid_response' => 'Risposta non valida', default => 'Errore HTTP' } }}</p>
+                        <p class="mt-2 text-sm">{{ $analyticsQuota['request_error']['message'] }}</p>
+                        @if ($analyticsQuota['request_error']['http_status'])
+                            <p class="mt-1 text-sm">Risposta HTTP {{ $analyticsQuota['request_error']['http_status'] }}.</p>
+                        @endif
+                        <p class="mt-2 text-sm">Rilevato il {{ \Carbon\CarbonImmutable::parse($analyticsQuota['request_error']['occurred_at'])->setTimezone(config('app.timezone'))->format('d/m/Y H:i:s') }} ({{ config('app.timezone') }}).</p>
+                        @if ($analyticsQuota['request_error']['retry_at'])
+                            <p class="mt-1 text-sm">Nuovo tentativo consentito dall’app dalle {{ \Carbon\CarbonImmutable::parse($analyticsQuota['request_error']['retry_at'])->setTimezone(config('app.timezone'))->format('H:i:s') }}.</p>
+                        @endif
+                    </div>
+                @endif
+                @if (! empty($analyticsQuota['quota_pause']) && \Carbon\CarbonImmutable::parse($analyticsQuota['quota_pause']['retry_at'])->isFuture())
+                    <div class="ui-alert ui-tone-warning mt-4">
+                        <p class="font-semibold">Pausa preventiva per quota residua bassa</p>
+                        <p class="mt-2 text-sm">{{ $analyticsQuota['quota_pause']['message'] }}</p>
+                        <p class="mt-1 text-sm">Nuova lettura consentita dalle {{ \Carbon\CarbonImmutable::parse($analyticsQuota['quota_pause']['retry_at'])->setTimezone(config('app.timezone'))->format('d/m/Y H:i:s') }} ({{ config('app.timezone') }}).</p>
+                    </div>
+                @endif
             </section>
 
             @if ($overview['is_stale'] ?? false)
