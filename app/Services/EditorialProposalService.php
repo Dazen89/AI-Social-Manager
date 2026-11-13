@@ -192,6 +192,8 @@ class EditorialProposalService
                 $report = $this->analytics->overview($site->googleAnalyticsProperty, $site->host, 28);
                 $signals['google_analytics'] = [
                     'status' => $report['has_data'] ? 'available' : 'no_data',
+                    'is_stale' => $report['is_stale'] ?? false,
+                    'fetched_at' => $report['fetched_at'],
                     'period' => [$report['start_date'], $report['end_date']],
                     'sessions' => $report['has_data'] ? (int) ($report['summary']['sessions'] ?? 0) : null,
                     'daily_sessions' => array_map(fn (array $row): array => [
@@ -278,6 +280,8 @@ Esempi di ritmo con segnaposto da sostituire con i dati del candidato: «Segnali
 Il ranking del feed Per te di X stima per ogni lettore la probabilità di azioni come risposte, repost e citazioni. Usa le interazioni osservate per orientare la scrittura e tieni distinti i tassi storici dalle previsioni di X. Apri il testo con il dettaglio più utile ricavabile da serie e titolo e usa una domanda specifica solo se offre uno spunto autentico.
 
 Quando x_post_metrics è available, confronta interactions_per_100_impressions per la stessa azione tra post di serie simili e con età effettive simili (age_hours). Tieni separati i confronti a 24 ore e a 7 giorni e usa age_hours anche per le rilevazioni senza target_age_hours. Ogni post conta una volta per confronto: più rilevazioni dello stesso post non aumentano il campione. Considera a parte url_link_clicks_per_100_impressions per capire quali testi invitano ad aprire il link. I clic misurati su X e le sessioni GA4 descrivono azioni diverse. Un valore null indica un dato assente. Usa copy_format per scegliere una lunghezza, una struttura o l'uso di una domanda da provare. Nella motivazione indica quanti post sostengono il confronto e collega la scelta ai tassi osservati come ipotesi. Se i confronti sono pochi o i tassi mancano, indica il limite e privilegia un testo chiaro e specifico.
+
+Quando google_analytics.is_stale è true, i dati sono una rilevazione precedente: usa fetched_at per dichiararne la data e segnala che Google non ha consentito l'aggiornamento.
 PROMPT;
     }
 

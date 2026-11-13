@@ -38,6 +38,10 @@ class AnalyticsInsightService
 
         $overview = $this->analytics->overview($property, $site->host, $days);
 
+        if ($overview['is_stale'] ?? false) {
+            throw new AiServiceException($overview['refresh_warning']);
+        }
+
         if (! $overview['has_data']) {
             throw new AiServiceException('Non ci sono abbastanza dati Analytics nel periodo scelto per creare un’analisi.');
         }

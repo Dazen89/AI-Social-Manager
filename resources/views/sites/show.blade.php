@@ -56,6 +56,13 @@
                 </div>
             </section>
 
+            @if ($overview['is_stale'] ?? false)
+                <div class="ui-alert ui-tone-warning mb-7" role="status">
+                    <p class="font-semibold">Visualizzi l’ultimo report disponibile</p>
+                    <p class="mt-2">{{ $overview['refresh_warning'] }} Dati recuperati il {{ \Carbon\CarbonImmutable::parse($overview['fetched_at'])->format('d/m/Y H:i') }}.</p>
+                </div>
+            @endif
+
             @if ($reportError)
                 <section class="rounded-3xl border border-danger-ink/22 bg-danger-soft p-8" role="alert">
                     <p class="text-sm font-semibold uppercase tracking-[0.18em] text-danger-ink">Dati non disponibili</p>

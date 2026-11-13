@@ -49,7 +49,7 @@ class GoogleAnalyticsReportService
             sha1($host),
         ]);
 
-        return Cache::remember($cacheKey, now()->addMinutes(10), function () use ($property, $host, $days): array {
+        return $this->cachedReport($property, $cacheKey, true, function () use ($property, $host, $days): array {
             return $this->requestOverview($property, $host, $days);
         });
     }
@@ -78,9 +78,69 @@ class GoogleAnalyticsReportService
             sha1($host),
         ]);
 
-        return Cache::remember($cacheKey, now()->addMinutes(10), function () use ($property, $host, $days): array {
+        return $this->cachedReport($property, $cacheKey, false, function () use ($property, $host, $days): array {
             return $this->requestInsightData($property, $host, $days);
         });
+    }
+
+    private function cooldownKey(GoogleAnalyticsProperty $property): string
+    {
+        return 'ga4-report-cooldown.'.sha1((string) $property->property_id);
+    }
+
+    private function cachedReport(GoogleAnalyticsProperty $property, string $key, bool $allowStale, callable $fetch): array
+    {
+        if (is_array($cached = Cache::get($key))) {
+            return $cached;
+        }
+
+        $fallback = function (string $message) use ($key, $allowStale): array {
+            $previous = $allowStale ? Cache::get($key.'.last-success') : null;
+
+            if (is_array($previous)) {
+                return $previous + ['is_stale' => true, 'refresh_warning' => $message];
+            }
+
+            throw new GoogleAnalyticsReportException($message);
+        };
+
+        if (is_string($message = Cache::get($this->cooldownKey($property)))) {
+            return $fallback($message);
+        }
+
+        $lock = Cache::lock('ga4-report-lock.'.sha1((string) $property->property_id), 60);
+
+        if (! $lock->get()) {
+            return $fallback('È già in corso una lettura dei report Analytics. Riprova tra poco.');
+        }
+
+        try {
+            // Another request may have populated the cache before this lock was acquired.
+            if (is_array($cached = Cache::get($key))) {
+                return $cached;
+            }
+
+            if (is_string($message = Cache::get($this->cooldownKey($property)))) {
+                return $fallback($message);
+            }
+
+            $data = $fetch();
+            Cache::put($key, $data, now()->addMinutes(10));
+
+            if ($allowStale) {
+                Cache::put($key.'.last-success', $data, now()->addDay());
+            }
+
+            return $data;
+        } catch (GoogleAnalyticsReportException $exception) {
+            if (is_string($message = Cache::get($this->cooldownKey($property)))) {
+                return $fallback($message);
+            }
+
+            throw $exception;
+        } finally {
+            $lock->release();
+        }
     }
 
     /**
@@ -249,14 +309,17 @@ class GoogleAnalyticsReportService
         try {
             $response = Http::acceptJson()
                 ->withToken($this->analytics->validAccessToken($property->connection))
-                ->timeout(20)
+                ->connectTimeout(3)
+                ->timeout(8)
                 ->retry(2, 250, function (Throwable $exception): bool {
                     return $exception instanceof ConnectionException
                         || ($exception instanceof RequestException && $exception->response->serverError());
                 }, throw: false)
                 ->post($url, ['requests' => $requests]);
         } catch (ConnectionException) {
-            throw new GoogleAnalyticsReportException('Google Analytics non è raggiungibile in questo momento. Controlla la connessione del server e riprova.');
+            $message = 'Google Analytics non è raggiungibile in questo momento. Il prossimo tentativo sarà possibile tra un minuto.';
+            Cache::put($this->cooldownKey($property), $message, now()->addMinute());
+            throw new GoogleAnalyticsReportException($message);
         }
 
         if ($response->failed()) {
@@ -367,7 +430,13 @@ class GoogleAnalyticsReportService
         }
 
         if ($status === 429) {
-            throw new GoogleAnalyticsReportException('Google Analytics ha temporaneamente esaurito la quota di richieste. Attendi qualche minuto e riprova.');
+            $message = 'Google Analytics ha temporaneamente esaurito la quota di richieste. L’app sospende le nuove letture per 15 minuti, poi riprova alla prossima richiesta.';
+            Cache::put($this->cooldownKey($property), $message, now()->addMinutes(15));
+            throw new GoogleAnalyticsReportException($message);
+        }
+
+        if ($status >= 500) {
+            Cache::put($this->cooldownKey($property), 'Google Analytics è temporaneamente indisponibile. Riprova tra un minuto.', now()->addMinute());
         }
 
         throw new GoogleAnalyticsReportException('Google Analytics non ha restituito i dati richiesti. Riprova più tardi; se il problema continua, controlla la configurazione della proprietà.');

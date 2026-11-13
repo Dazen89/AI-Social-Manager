@@ -100,6 +100,69 @@ class SiteAnalyticsOverviewTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    public function test_quota_error_blocks_other_ranges_and_insight_requests_until_cooldown_expires(): void
+    {
+        $this->freezeTime();
+        Http::preventStrayRequests();
+        Http::fakeSequence()->push(['error' => ['status' => 'RESOURCE_EXHAUSTED']], 429)
+            ->push($this->reportPayload());
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
+        $this->connectAnalytics($admin, $site);
+
+        $this->actingAs($admin)->get(route('sites.show', $site))->assertOk()->assertSee('15 minuti');
+        $this->get(route('sites.show', ['site' => $site, 'range' => 90]))->assertOk()->assertSee('15 minuti');
+
+        try {
+            app(\App\Services\GoogleAnalyticsReportService::class)->insightData($site->googleAnalyticsProperty, $site->host, 28);
+            $this->fail('Insight requests must respect the property cooldown.');
+        } catch (\App\Exceptions\GoogleAnalyticsReportException $exception) {
+            $this->assertStringContainsString('15 minuti', $exception->getMessage());
+        }
+
+        Http::assertSentCount(1);
+        $this->travel(16)->minutes();
+        $this->get(route('sites.show', $site))->assertOk()->assertSee('Panoramica del traffico');
+        Http::assertSentCount(2);
+    }
+
+    public function test_last_successful_report_is_shown_during_quota_exhaustion_with_original_timestamp(): void
+    {
+        $this->freezeTime();
+        Http::preventStrayRequests();
+        Http::fakeSequence()->push($this->reportPayload())->push([], 429);
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
+        $this->connectAnalytics($admin, $site);
+        $fetchedAt = now()->toIso8601String();
+
+        $this->actingAs($admin)->get(route('sites.show', $site))->assertOk();
+        $this->travel(11)->minutes();
+        $this->get(route('sites.show', $site))->assertOk()
+            ->assertSee('Visualizzi l’ultimo report disponibile')
+            ->assertSee('1.234')
+            ->assertViewHas('overview', fn (array $report) => $report['is_stale'] && $report['fetched_at'] === $fetchedAt);
+        $this->get(route('sites.show', $site))->assertOk()->assertSee('Visualizzi l’ultimo report disponibile');
+        Http::assertSentCount(2);
+    }
+
+    public function test_simultaneous_report_read_does_not_call_google(): void
+    {
+        Http::preventStrayRequests();
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
+        $this->connectAnalytics($admin, $site);
+        $lock = Cache::lock('ga4-report-lock.'.sha1('987654'), 60);
+        $lock->get();
+
+        try {
+            $this->actingAs($admin)->get(route('sites.show', $site))->assertOk()->assertSee('È già in corso');
+            Http::assertNothingSent();
+        } finally {
+            $lock->release();
+        }
+    }
+
     public function test_disabled_data_api_produces_an_actionable_error(): void
     {
         Http::fake([
