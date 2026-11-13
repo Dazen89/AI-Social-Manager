@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Exceptions\GoogleAnalyticsReportException;
 use App\Models\GoogleAnalyticsProperty;
 use Carbon\CarbonImmutable;
+use GuzzleHttp\TransferStats;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
@@ -38,6 +39,32 @@ class GoogleAnalyticsReportService
     public function quotaDiagnostics(GoogleAnalyticsProperty $property): array
     {
         return Cache::get($this->cooldownKey($property).'.diagnostics', []);
+    }
+
+    /** @return array<string, mixed> */
+    public function diagnose(GoogleAnalyticsProperty $property): array
+    {
+        if ($property->connection?->status !== 'active') {
+            throw new GoogleAnalyticsReportException('Il collegamento Google Analytics non è attivo.');
+        }
+
+        $key = 'ga4-diagnostic.'.sha1($property->getKey().'.'.$property->connection->getKey().'.'.$property->property_id);
+
+        return $this->cachedReport($property, $key, false, function () use ($property): array {
+            $timings = [];
+            $started = microtime(true);
+            $this->batchReports($property, [[
+                'dateRanges' => [['startDate' => 'yesterday', 'endDate' => 'yesterday']],
+                'metrics' => [['name' => 'sessions']],
+                'limit' => '1',
+            ]], $timings);
+
+            return [
+                'measured_at' => now()->toIso8601String(),
+                'elapsed_seconds' => round(microtime(true) - $started, 3),
+                'timings' => $timings,
+            ];
+        });
     }
 
     /** @param array<int, array<string, mixed>> $reports */
@@ -172,7 +199,7 @@ class GoogleAnalyticsReportService
         return self::FAILURE_DELAYS_MINUTES[$failures - 1];
     }
 
-    private function recordRequestError(GoogleAnalyticsProperty $property, string $type, string $message, ?int $status = null, ?string $phase = null): string
+    private function recordRequestError(GoogleAnalyticsProperty $property, string $type, string $message, ?int $status = null, ?string $phase = null, array $timings = []): string
     {
         $retryAt = null;
 
@@ -191,6 +218,7 @@ class GoogleAnalyticsReportService
             'phase' => $phase,
             'occurred_at' => now()->toIso8601String(),
             'retry_at' => $retryAt?->toIso8601String(),
+            'timings' => $timings,
         ];
         Cache::put($this->cooldownKey($property).'.diagnostics', $diagnostics, now()->addDay());
 
@@ -445,7 +473,7 @@ class GoogleAnalyticsReportService
      * @param  array<int, array<string, mixed>>  $requests
      * @return array<int, array<string, mixed>>
      */
-    private function batchReports(GoogleAnalyticsProperty $property, array $requests): array
+    private function batchReports(GoogleAnalyticsProperty $property, array $requests, ?array &$timings = null): array
     {
         $url = self::DATA_API_ENDPOINT.'/properties/'.$property->property_id.':batchRunReports';
         $requests = array_map(fn (array $request): array => $request + ['returnPropertyQuota' => true], $requests);
@@ -458,6 +486,15 @@ class GoogleAnalyticsReportService
                 ->withToken($token)
                 ->connectTimeout(5)
                 ->timeout(20)
+                ->withOptions(['on_stats' => function (TransferStats $stats) use (&$timings): void {
+                    $timings = [];
+                    foreach (['namelookup_time', 'connect_time', 'appconnect_time', 'starttransfer_time', 'total_time'] as $field) {
+                        $value = $stats->getHandlerStats()[$field] ?? null;
+                        if (is_numeric($value)) {
+                            $timings[$field] = round((float) $value, 3);
+                        }
+                    }
+                }])
                 ->post($url, ['requests' => $requests]);
         } catch (ConnectionException $exception) {
             $errno = 0;
@@ -476,19 +513,19 @@ class GoogleAnalyticsReportService
                 default => 'Errore di rete nella comunicazione con Google.',
             };
             $stage = $phase === 'authorization' ? 'Il problema si è verificato durante il rinnovo dell’autorizzazione.' : 'Il problema si è verificato durante la lettura dei report.';
-            $message = $this->recordRequestError($property, $type, $reason.' '.$stage, phase: $phase);
+            $message = $this->recordRequestError($property, $type, $reason.' '.$stage, phase: $phase, timings: $timings ?? []);
             throw new GoogleAnalyticsReportException($message);
         }
 
         if ($response->failed()) {
-            $this->throwReportException($property, $response->status(), (array) $response->json());
+            $this->throwReportException($property, $response->status(), (array) $response->json(), $timings ?? []);
         }
 
         $payload = $response->json();
 
         if (! is_array($payload) || ! is_array($payload['reports'] ?? null)) {
             $message = 'Google Analytics ha restituito una risposta dati non valida. Riprova più tardi.';
-            $message = $this->recordRequestError($property, 'invalid_response', $message, $response->status(), 'reports');
+            $message = $this->recordRequestError($property, 'invalid_response', $message, $response->status(), 'reports', $timings ?? []);
             throw new GoogleAnalyticsReportException($message);
         }
 
@@ -567,7 +604,7 @@ class GoogleAnalyticsReportService
     /**
      * @param  array<string, mixed>  $payload
      */
-    private function throwReportException(GoogleAnalyticsProperty $property, int $status, array $payload): never
+    private function throwReportException(GoogleAnalyticsProperty $property, int $status, array $payload, array $timings = []): never
     {
         $encodedPayload = json_encode($payload) ?: '';
         if ($status !== 429) {
@@ -578,7 +615,7 @@ class GoogleAnalyticsReportService
                 503 => 'Il servizio Google Analytics è temporaneamente indisponibile (HTTP 503).',
                 default => "Google Analytics ha restituito un errore HTTP {$status}.",
             };
-            $message = $this->recordRequestError($property, $status >= 500 ? 'server' : 'http', $message, $status, 'reports');
+            $message = $this->recordRequestError($property, $status >= 500 ? 'server' : 'http', $message, $status, 'reports', $timings);
         }
 
         if ($status === 403 && (str_contains($encodedPayload, 'analyticsdata.googleapis.com') || str_contains($encodedPayload, 'SERVICE_DISABLED'))) {

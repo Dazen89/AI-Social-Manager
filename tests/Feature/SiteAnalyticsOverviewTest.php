@@ -100,6 +100,34 @@ class SiteAnalyticsOverviewTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    public function test_diagnostic_command_requests_only_one_minimal_report_and_reuses_its_measurement(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake(['https://analyticsdata.googleapis.com/*' => Http::response(['reports' => [[]]])]);
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
+        $this->connectAnalytics($admin, $site);
+
+        $this->artisan('analytics:diagnose')->expectsOutputToContain('Report minimale riuscito.')->assertSuccessful();
+        $this->artisan('analytics:diagnose', ['site' => $site->id])->assertSuccessful();
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($request) => count($request['requests']) === 1
+            && $request['requests'][0]['metrics'] === [['name' => 'sessions']]
+            && $request['requests'][0]['dateRanges'] === [['startDate' => 'yesterday', 'endDate' => 'yesterday']]);
+    }
+
+    public function test_diagnostic_command_respects_shared_cooldown_after_server_errors(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake(['https://analyticsdata.googleapis.com/*' => Http::response([], 503)]);
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
+        $this->connectAnalytics($admin, $site);
+        $this->artisan('analytics:diagnose')->expectsOutputToContain('HTTP 503')->assertFailed();
+        $this->artisan('analytics:diagnose')->expectsOutputToContain('Nuove letture sospese per 5 minuti')->assertFailed();
+        Http::assertSentCount(1);
+    }
+
     #[\PHPUnit\Framework\Attributes\DataProvider('connectionFailures')]
     public function test_connection_errors_are_classified_without_exposing_raw_details(int $errno, string $kind, string $label): void
     {
