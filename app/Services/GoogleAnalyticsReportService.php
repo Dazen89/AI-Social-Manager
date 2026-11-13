@@ -42,7 +42,7 @@ class GoogleAnalyticsReportService
     }
 
     /** @return array<string, mixed> */
-    public function diagnose(GoogleAnalyticsProperty $property): array
+    public function diagnose(GoogleAnalyticsProperty $property, ?callable $onAttempt = null): array
     {
         if ($property->connection?->status !== 'active') {
             throw new GoogleAnalyticsReportException('Il collegamento Google Analytics non è attivo.');
@@ -50,7 +50,10 @@ class GoogleAnalyticsReportService
 
         $key = 'ga4-diagnostic.'.sha1($property->getKey().'.'.$property->connection->getKey().'.'.$property->property_id);
 
-        return $this->cachedReport($property, $key, false, function () use ($property): array {
+        return $this->cachedReport($property, $key, false, function () use ($property, $onAttempt): array {
+            if ($onAttempt !== null) {
+                $onAttempt();
+            }
             $timings = [];
             $started = microtime(true);
             $this->batchReports($property, [[

@@ -108,8 +108,10 @@ class SiteAnalyticsOverviewTest extends TestCase
         $site = Site::factory()->create();
         $this->connectAnalytics($admin, $site);
 
-        $this->artisan('analytics:diagnose')->expectsOutputToContain('Report minimale riuscito.')->assertSuccessful();
-        $this->artisan('analytics:diagnose', ['site' => $site->id])->assertSuccessful();
+        $this->artisan('analytics:diagnose')->expectsOutputToContain('Avvio di un nuovo tentativo')
+            ->expectsOutputToContain('Report minimale riuscito.')->assertSuccessful();
+        $this->artisan('analytics:diagnose', ['site' => $site->id])
+            ->expectsOutputToContain('Misura riutilizzata dalla cache')->assertSuccessful();
         Http::assertSentCount(1);
         Http::assertSent(fn ($request) => count($request['requests']) === 1
             && $request['requests'][0]['metrics'] === [['name' => 'sessions']]
@@ -124,8 +126,29 @@ class SiteAnalyticsOverviewTest extends TestCase
         $site = Site::factory()->create();
         $this->connectAnalytics($admin, $site);
         $this->artisan('analytics:diagnose')->expectsOutputToContain('HTTP 503')->assertFailed();
-        $this->artisan('analytics:diagnose')->expectsOutputToContain('Nuove letture sospese per 5 minuti')->assertFailed();
+        $this->artisan('analytics:diagnose')->expectsOutputToContain('Test non eseguito')
+            ->expectsOutputToContain('Nuove letture sospese per 5 minuti')->assertFailed();
         Http::assertSentCount(1);
+    }
+
+    public function test_diagnostic_distinguishes_new_timeout_from_saved_error(): void
+    {
+        Http::preventStrayRequests();
+        $calls = 0;
+        Http::fake(function ($request) use (&$calls) {
+            $calls++;
+            return Http::failedConnection('cURL error 28: synthetic-private-detail')($request);
+        });
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
+        $this->connectAnalytics($admin, $site);
+        $this->artisan('analytics:diagnose')->expectsOutputToContain('Avvio di un nuovo tentativo')
+            ->expectsOutputToContain('Durata del nuovo tentativo PHP')
+            ->expectsOutputToContain('Timeout nella comunicazione')->assertFailed();
+        $this->artisan('analytics:diagnose')->expectsOutputToContain('Test non eseguito')
+            ->expectsOutputToContain('Ultimo errore registrato il')
+            ->expectsOutputToContain('Nuovo tentativo consentito dalle')->assertFailed();
+        $this->assertSame(1, $calls);
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('connectionFailures')]
