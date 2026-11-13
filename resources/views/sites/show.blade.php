@@ -56,6 +56,42 @@
                 </div>
             </section>
 
+            <section class="ui-panel mb-7 p-5" aria-labelledby="analytics-quota-heading">
+                <h2 id="analytics-quota-heading" class="text-lg font-semibold">Quote Google Analytics</h2>
+                <p class="mt-2 text-sm text-muted">Disponibilità restituita da Google durante le letture dei report di questa proprietà. I valori si riferiscono alla data indicata e possono essere consumati anche da altre applicazioni.</p>
+                @if (! empty($analyticsQuota['quotas']))
+                    <p class="mt-2 text-xs text-muted">Ultima rilevazione {{ \Carbon\CarbonImmutable::parse($analyticsQuota['measured_at'])->setTimezone(config('app.timezone'))->format('d/m/Y H:i:s') }} ({{ config('app.timezone') }}). Per ogni quota mostriamo il minimo residuo osservato nel gruppo di report.</p>
+                    <div class="ui-table-scroll mt-4">
+                        <table class="w-full text-left text-sm">
+                            <thead><tr><th scope="col" class="py-2">Quota</th><th scope="col" class="py-2 text-right">Residuo alla rilevazione</th></tr></thead>
+                            <tbody>
+                                @foreach ($analyticsQuota['quotas'] as $quota)
+                                    <tr class="border-t border-line">
+                                        <th scope="row" class="py-2 font-normal">{{ $quota['label'] }}</th>
+                                        <td class="py-2 text-right {{ $quota['remaining'] === 0 ? 'font-semibold text-warning-ink' : '' }}">{{ number_format($quota['remaining'], 0, ',', '.') }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @else
+                    <p class="mt-3 text-sm text-muted">Google non ha ancora restituito le quote residue. Saranno richieste con la prossima lettura dei report.</p>
+                @endif
+                @if (! empty($analyticsQuota['error']))
+                    <div class="ui-alert ui-tone-warning mt-4">
+                        <p class="font-semibold">Ultimo rifiuto per quota · HTTP {{ $analyticsQuota['error']['http_status'] }}</p>
+                        <p class="mt-1 text-sm">{{ $analyticsQuota['error']['quota_label'] ?? 'Google ha segnalato una quota esaurita senza specificare il limite raggiunto.' }}</p>
+                        <p class="mt-2 text-sm">Rilevato il {{ \Carbon\CarbonImmutable::parse($analyticsQuota['error']['occurred_at'])->setTimezone(config('app.timezone'))->format('d/m/Y H:i:s') }}.</p>
+                        @if (\Carbon\CarbonImmutable::parse($analyticsQuota['error']['retry_at'])->isFuture())
+                            <p class="mt-1 text-sm">Nuove letture sospese dall’app fino alle {{ \Carbon\CarbonImmutable::parse($analyticsQuota['error']['retry_at'])->setTimezone(config('app.timezone'))->format('H:i:s') }} ({{ config('app.timezone') }}).</p>
+                        @else
+                            <p class="mt-1 text-sm">La pausa dell’app è terminata. La prossima lettura necessaria tenterà di aggiornare i dati.</p>
+                        @endif
+                        <p class="mt-2 text-xs">Il ripristino della quota dipende da Google. Le quote residue eventualmente mostrate sopra appartengono all’ultima lettura riuscita.</p>
+                    </div>
+                @endif
+            </section>
+
             @if ($overview['is_stale'] ?? false)
                 <div class="ui-alert ui-tone-warning mb-7" role="status">
                     <p class="font-semibold">Visualizzi l’ultimo report disponibile</p>

@@ -16,7 +16,95 @@ class GoogleAnalyticsReportService
 {
     private const DATA_API_ENDPOINT = 'https://analyticsdata.googleapis.com/v1beta';
 
+    private const QUOTA_LABELS = [
+        'tokensPerDay' => 'Token giornalieri della proprietà',
+        'tokensPerHour' => 'Token orari della proprietà',
+        'tokensPerProjectPerHour' => 'Token orari del progetto per questa proprietà',
+        'concurrentRequests' => 'Richieste contemporanee',
+        'serverErrorsPerProjectPerHour' => 'Errori del servizio Google nell’ora',
+        'potentiallyThresholdedRequestsPerHour' => 'Richieste orarie soggette a soglie di privacy',
+    ];
+
     public function __construct(private readonly GoogleAnalyticsService $analytics) {}
+
+    /** @return array<string, mixed> */
+    public function quotaDiagnostics(GoogleAnalyticsProperty $property): array
+    {
+        return Cache::get($this->cooldownKey($property).'.diagnostics', []);
+    }
+
+    /** @param array<int, array<string, mixed>> $reports */
+    private function recordQuota(GoogleAnalyticsProperty $property, array $reports): void
+    {
+        $remaining = [];
+
+        foreach ($reports as $report) {
+            foreach (self::QUOTA_LABELS as $field => $label) {
+                $value = data_get($report, "propertyQuota.{$field}.remaining");
+
+                if (is_int($value) && $value >= 0) {
+                    $remaining[$field] = min($remaining[$field] ?? $value, $value);
+                }
+            }
+        }
+
+        $diagnostics = $this->quotaDiagnostics($property);
+        unset($diagnostics['error']);
+
+        if ($remaining !== []) {
+            $diagnostics['measured_at'] = now()->toIso8601String();
+            $diagnostics['quotas'] = [];
+
+            foreach ($remaining as $field => $value) {
+                $diagnostics['quotas'][] = ['label' => self::QUOTA_LABELS[$field], 'remaining' => $value];
+            }
+        }
+
+        Cache::put($this->cooldownKey($property).'.diagnostics', $diagnostics, now()->addDay());
+    }
+
+    /** @param array<string, mixed> $payload */
+    private function recordQuotaError(GoogleAnalyticsProperty $property, array $payload): void
+    {
+        // Classify known quota descriptions without persisting provider messages or metadata.
+        $description = strtolower(json_encode($payload) ?: '');
+        $compact = preg_replace('/[^a-z]/', '', $description) ?? '';
+        $label = null;
+
+        foreach (self::QUOTA_LABELS as $field => $candidate) {
+            if (str_contains($compact, strtolower($field))) {
+                $label = $candidate;
+                break;
+            }
+        }
+
+        if ($label === null) {
+            $patterns = [
+                '/hourly tokens? per project|tokens? per project per (?:property per )?hour/' => 'tokensPerProjectPerHour',
+                '/daily tokens?|tokens? per (?:property per )?day/' => 'tokensPerDay',
+                '/hourly tokens?|tokens? per (?:property per )?hour/' => 'tokensPerHour',
+                '/concurrent requests?/' => 'concurrentRequests',
+                '/server errors?/' => 'serverErrorsPerProjectPerHour',
+                '/potentially thresholded/' => 'potentiallyThresholdedRequestsPerHour',
+            ];
+
+            foreach ($patterns as $pattern => $field) {
+                if (preg_match($pattern, $description)) {
+                    $label = self::QUOTA_LABELS[$field];
+                    break;
+                }
+            }
+        }
+
+        $diagnostics = $this->quotaDiagnostics($property);
+        $diagnostics['error'] = [
+            'http_status' => 429,
+            'quota_label' => $label,
+            'occurred_at' => now()->toIso8601String(),
+            'retry_at' => now()->addMinutes(15)->toIso8601String(),
+        ];
+        Cache::put($this->cooldownKey($property).'.diagnostics', $diagnostics, now()->addDay());
+    }
 
     /**
      * @return array{
@@ -305,6 +393,7 @@ class GoogleAnalyticsReportService
     private function batchReports(GoogleAnalyticsProperty $property, array $requests): array
     {
         $url = self::DATA_API_ENDPOINT.'/properties/'.$property->property_id.':batchRunReports';
+        $requests = array_map(fn (array $request): array => $request + ['returnPropertyQuota' => true], $requests);
 
         try {
             $response = Http::acceptJson()
@@ -332,7 +421,10 @@ class GoogleAnalyticsReportService
             throw new GoogleAnalyticsReportException('Google Analytics ha restituito una risposta dati non valida. Riprova più tardi.');
         }
 
-        return array_values($payload['reports']);
+        $reports = array_values($payload['reports']);
+        $this->recordQuota($property, $reports);
+
+        return $reports;
     }
 
     /**
@@ -430,6 +522,7 @@ class GoogleAnalyticsReportService
         }
 
         if ($status === 429) {
+            $this->recordQuotaError($property, $payload);
             $message = 'Google Analytics ha temporaneamente esaurito la quota di richieste. L’app sospende le nuove letture per 15 minuti, poi riprova alla prossima richiesta.';
             Cache::put($this->cooldownKey($property), $message, now()->addMinutes(15));
             throw new GoogleAnalyticsReportException($message);

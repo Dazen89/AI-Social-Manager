@@ -55,6 +55,7 @@ class SiteAnalyticsOverviewController extends Controller
             'analyticsIsConnected' => $property?->connection?->status === 'active',
             'overview' => $overview,
             'reportError' => $reportError,
+            'analyticsQuota' => $property?->connection?->status === 'active' ? $reports->quotaDiagnostics($property) : [],
             'searchIsConnected' => $searchConnection?->status === 'active',
             'searchOverview' => $searchOverview,
             'searchReportError' => $searchReportError,

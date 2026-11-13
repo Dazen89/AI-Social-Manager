@@ -100,6 +100,66 @@ class SiteAnalyticsOverviewTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    public function test_quota_panel_uses_reported_balances_and_does_not_make_extra_requests(): void
+    {
+        $payload = $this->reportPayload();
+        $payload['reports'][0]['propertyQuota'] = [
+            'tokensPerDay' => ['consumed' => 5, 'remaining' => 1000],
+            'tokensPerProjectPerHour' => ['remaining' => 0],
+            'concurrentRequests' => ['remaining' => 9],
+        ];
+        $payload['reports'][1]['propertyQuota'] = ['tokensPerDay' => ['remaining' => 950]];
+        Http::preventStrayRequests();
+        Http::fake(['https://analyticsdata.googleapis.com/*' => Http::response($payload)]);
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
+        $this->connectAnalytics($admin, $site);
+
+        $this->actingAs($admin)->get(route('sites.show', $site))->assertOk()
+            ->assertSee('Quote Google Analytics')->assertSee('950')
+            ->assertViewHas('analyticsQuota', fn ($diagnostics) => $diagnostics['quotas'] === [
+                ['label' => 'Token giornalieri della proprietà', 'remaining' => 950],
+                ['label' => 'Token orari del progetto per questa proprietà', 'remaining' => 0],
+                ['label' => 'Richieste contemporanee', 'remaining' => 9],
+            ]);
+        $this->get(route('sites.show', $site))->assertOk()->assertSee('950');
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($request) => collect($request['requests'])->every(
+            fn ($report) => $report['returnPropertyQuota'] === true,
+        ));
+    }
+
+    public function test_quota_error_identifies_known_limits_without_exposing_provider_metadata(): void
+    {
+        $this->freezeTime();
+        Http::preventStrayRequests();
+        Http::fakeSequence()->push(['error' => [
+            'status' => 'RESOURCE_EXHAUSTED',
+            'message' => 'Synthetic private provider detail',
+            'details' => [[
+                'metadata' => ['quota_metric' => 'analyticsdata.googleapis.com/tokens_per_project_per_hour',
+                    'consumer' => 'synthetic-private-project'],
+            ]],
+        ]], 429)->push($this->reportPayload());
+        $admin = User::factory()->administrator()->create();
+        $site = Site::factory()->create();
+        $this->connectAnalytics($admin, $site);
+
+        $this->actingAs($admin)->get(route('sites.show', $site))->assertOk()
+            ->assertSee('Token orari del progetto per questa proprietà')
+            ->assertSee('Nuove letture sospese')->assertDontSee('synthetic-private-project')
+            ->assertDontSee('Synthetic private provider detail')
+            ->assertViewHas('analyticsQuota', fn ($diagnostics) => $diagnostics['error']['http_status'] === 429
+                && $diagnostics['error']['retry_at'] === now()->addMinutes(15)->toIso8601String());
+        $this->get(route('sites.show', $site))->assertOk()->assertSee('Token orari del progetto per questa proprietà');
+        Http::assertSentCount(1);
+        $diagnostics = app(\App\Services\GoogleAnalyticsReportService::class)->quotaDiagnostics($site->googleAnalyticsProperty);
+        $this->assertStringNotContainsString('synthetic-private-project', json_encode($diagnostics));
+        $this->travel(16)->minutes();
+        $this->get(route('sites.show', $site))->assertOk()->assertDontSee('Ultimo rifiuto per quota');
+        Http::assertSentCount(2);
+    }
+
     public function test_quota_error_blocks_other_ranges_and_insight_requests_until_cooldown_expires(): void
     {
         $this->freezeTime();
@@ -110,7 +170,8 @@ class SiteAnalyticsOverviewTest extends TestCase
         $site = Site::factory()->create();
         $this->connectAnalytics($admin, $site);
 
-        $this->actingAs($admin)->get(route('sites.show', $site))->assertOk()->assertSee('15 minuti');
+        $this->actingAs($admin)->get(route('sites.show', $site))->assertOk()->assertSee('15 minuti')
+            ->assertSee('senza specificare il limite raggiunto');
         $this->get(route('sites.show', ['site' => $site, 'range' => 90]))->assertOk()->assertSee('15 minuti');
 
         try {
@@ -130,7 +191,9 @@ class SiteAnalyticsOverviewTest extends TestCase
     {
         $this->freezeTime();
         Http::preventStrayRequests();
-        Http::fakeSequence()->push($this->reportPayload())->push([], 429);
+        $payload = $this->reportPayload();
+        $payload['reports'][0]['propertyQuota'] = ['tokensPerDay' => ['remaining' => 199500]];
+        Http::fakeSequence()->push($payload)->push([], 429);
         $admin = User::factory()->administrator()->create();
         $site = Site::factory()->create();
         $this->connectAnalytics($admin, $site);
@@ -141,6 +204,9 @@ class SiteAnalyticsOverviewTest extends TestCase
         $this->get(route('sites.show', $site))->assertOk()
             ->assertSee('Visualizzi l’ultimo report disponibile')
             ->assertSee('1.234')
+            ->assertSee('199.500')
+            ->assertViewHas('analyticsQuota', fn ($diagnostics) => $diagnostics['measured_at'] === $fetchedAt
+                && $diagnostics['error']['http_status'] === 429)
             ->assertViewHas('overview', fn (array $report) => $report['is_stale'] && $report['fetched_at'] === $fetchedAt);
         $this->get(route('sites.show', $site))->assertOk()->assertSee('Visualizzi l’ultimo report disponibile');
         Http::assertSentCount(2);
